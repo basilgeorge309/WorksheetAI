@@ -1,37 +1,17 @@
 // WorksheetAI — fill-worksheet edge function (Deno).
 //
-// Flow: download uploaded PDF (service role) -> extract text (unpdf) ->
-// Anthropic (claude-sonnet-4-6) generates answers -> pdf-lib writes them onto
-// the PDF -> upload to outputs/{worksheetId}.pdf -> mark the row complete.
+// Flow: download uploaded PDF (service role) -> send PDF to Claude (native PDF) ->
+// the model generates answers -> pdf-lib writes them onto the PDF ->
+// upload to outputs/{worksheetId}.pdf -> mark the row complete.
 //
 // ANTHROPIC_API_KEY lives ONLY here (server side). The client never sees it.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import fontkit from 'https://esm.sh/@pdf-lib/fontkit@1.1.1';
 import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
-import { extractText, getDocumentProxy } from 'https://esm.sh/unpdf@0.12.1';
 
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 1000;
-
-const SYSTEM_PROMPT = `You are a student filling in a worksheet. Extract every question or blank field from the provided text and generate an appropriate answer for each one.
-
-Difficulty levels:
-- perfect: all answers correct, confident phrasing
-- realistic: ~90% correct, occasional "I think" or hedging, natural student voice
-- student: ~80% correct, a few wrong answers, crossed-out-style corrections noted in answer
-
-Handwriting styles affect phrasing only (not rendering at this stage):
-- neat: complete sentences, proper punctuation
-- average: some abbreviations, casual but readable
-- messy: fragments ok, shorthand, rushed feel
-
-For each answer also return an "x_hint": "left" or "right" indicating which column
-the answer belongs in based on the worksheet layout, and "index": the question number
-(1-based). This helps with precise placement.
-
-Respond ONLY with a JSON array. No markdown, no explanation, no backticks.
-Updated format: [{"question": "...", "answer": "...", "position": "top|middle|bottom|unknown", "x_hint": "left|right", "index": 1}]`;
+const MAX_TOKENS = 2000;
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -43,9 +23,10 @@ const CORS_HEADERS: Record<string, string> = {
 type Answer = {
   question: string;
   answer: string;
-  position?: string;
-  x_hint?: 'left' | 'right';
   index?: number;
+  x_percent?: number; // how far from the LEFT edge the answer should start, 0..100
+  y_percent?: number; // the question's position from the TOP, 0..100
+  available_height_percent?: number; // vertical space below the question, 0..100
 };
 
 // Real-TTF handwriting fonts from the google/fonts GitHub repo. These serve
@@ -58,18 +39,6 @@ const CAVEAT_TTF =
 const ARCHITECTS_DAUGHTER_TTF =
   'https://raw.githubusercontent.com/google/fonts/main/ofl/architectsdaughter/ArchitectsDaughter-Regular.ttf';
 
-// Fetch a handwriting TTF and embed it. Throws on failure so the caller can fall
-// back to a standard font.
-async function loadHandwritingFont(pdfDoc: any, style?: string): Promise<any> {
-  const ttfUrl = style === 'messy' ? ARCHITECTS_DAUGHTER_TTF : CAVEAT_TTF;
-  const fontResp = await fetch(ttfUrl);
-  if (!fontResp.ok) {
-    throw new Error(`Font fetch failed (${fontResp.status})`);
-  }
-  const fontBytes = new Uint8Array(await fontResp.arrayBuffer());
-  return await pdfDoc.embedFont(fontBytes);
-}
-
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -77,10 +46,56 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-// pdf-lib's StandardFonts.Helvetica is WinAnsi-encoded; drop glyphs it can't draw
-// so a stray unicode char never throws mid-render.
-function sanitize(text: string): string {
-  return text.replace(/[^\x20-\x7E]/g, '').slice(0, 120);
+// Base64-encode bytes in chunks. NOTE: btoa(String.fromCharCode(...bytes)) blows
+// the call stack for multi-hundred-KB PDFs ("Maximum call stack size exceeded"),
+// so we chunk the spread to stay safe for files up to the 10MB cap.
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const CHUNK = 0x8000; // 32KB per chunk
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(binary);
+}
+
+// Per-line sanitizer for multi-line answers: keep the step arrow as ASCII "->"
+// (the handwriting font lacks U+2192 and Helvetica throws on it), strip any
+// other non-encodable chars (pdf-lib's WinAnsi Helvetica fallback would throw
+// otherwise). Newlines are handled by the caller's split().
+function sanitizeLine(text: string): string {
+  return text.replace(/→/g, '->').replace(/[^\x20-\x7E]/g, '').trim().slice(0, 80);
+}
+
+// Draw a multi-line answer block, one line per "\n", stepping down by 1.4x the
+// font size. Skips anything that would fall off the bottom of the page. Returns
+// the total vertical height the block consumed.
+function drawMultilineAnswer(
+  page: any,
+  text: string,
+  startX: number,
+  startY: number,
+  font: any,
+  fontSize: number,
+  color: any,
+  maxLines = 2
+): number {
+  // Clamp to the space the model said is available below the question.
+  const lines = text.split('\n').slice(0, maxLines);
+  const lineHeight = fontSize * 2.2;
+  lines.forEach((line, i) => {
+    const y = startY - i * lineHeight;
+    if (y > 40) {
+      page.drawText(sanitizeLine(line), {
+        x: startX,
+        y,
+        size: fontSize,
+        font,
+        color,
+        maxWidth: 180,
+      });
+    }
+  });
+  return lines.length * lineHeight;
 }
 
 // Models occasionally wrap JSON in ```fences``` or a "Here is the JSON:" preamble
@@ -143,30 +158,72 @@ Deno.serve(async (req: Request) => {
     }
     const pdfBytes = new Uint8Array(await fileData.arrayBuffer());
 
-    // 2. Extract text.
-    const pdf = await getDocumentProxy(pdfBytes);
-    const { text: extractedText } = await extractText(pdf, { mergePages: true });
+    // 2. Send the PDF to Claude directly (native PDF/document support). It reads
+    // the page visually, so it works on scanned/image-only worksheets that have
+    // no extractable text layer.
+    const pdfBase64 = bytesToBase64(pdfBytes);
 
-    // 3. Anthropic — generate answers.
-    const userContent =
-      `Subject: ${subject ?? 'general'}\n` +
-      `Handwriting style: ${style ?? 'average'}\n` +
-      `Difficulty: ${difficulty ?? 'realistic'}\n\n` +
-      `Worksheet text:\n${extractedText}`;
+    // Load the PDF now so we can tell Claude the exact page dimensions and use
+    // its per-question placement estimates directly (same pdfDoc is drawn on below).
+    const pdfDoc = await PDFDocument.load(pdfBytes);
+    const firstPage = pdfDoc.getPages()[0];
+    const { width, height } = firstPage.getSize();
+    console.log('First page size:', width, height);
+
+    const promptText =
+      `You are a student filling in this worksheet by hand. Look at every \n` +
+      `question and blank field. Show your working the way a real student would.\n\n` +
+      `Style: ${style ?? 'average'}\n` +
+      `- neat: clear step-by-step, proper notation\n` +
+      `- average: shows main steps, skips obvious ones, casual notation\n` +
+      `- messy: jumps to answer with just 1-2 steps shown, shorthand\n\n` +
+      `Difficulty: ${difficulty ?? 'realistic'}\n` +
+      `- perfect: all answers correct, confident working\n` +
+      `- realistic: ~90% correct, natural student voice\n` +
+      `- student: ~80% correct, some wrong answers, rushed feel\n\n` +
+      `Subject: ${subject ?? 'general'}\n\n` +
+      `For math problems, show one working step then the final answer, e.g.\n` +
+      `"x = 14.13 + 4.25" then "x = 18.38".\n\n` +
+      `For each question on this worksheet:\n` +
+      `- Estimate x_percent: how far from the LEFT edge the answer should\n` +
+      `  start (0-100). Match the indentation of the question.\n` +
+      `- Estimate y_percent: the question's position from TOP (0-100).\n` +
+      `- Estimate available_height_percent: how much vertical space exists\n` +
+      `  BELOW this question before the next question starts (0-100).\n\n` +
+      `Write the answer in that space. If available_height_percent is small\n` +
+      `(under 5), keep the answer to 1 line only. If it's larger, show\n` +
+      `working steps on line 1 and final answer on line 2.\n\n` +
+      `This worksheet has dimensions ${width}x${height} PDF points.\n\n` +
+      `Respond ONLY with a JSON array, no markdown, no explanation:\n` +
+      `[{"question": "14.13 = x - 4.25", "answer": "x = 14.13 + 4.25\\nx = 18.38", "index": 1, "x_percent": 15, "y_percent": 22, "available_height_percent": 6}]`;
 
     const startedAt = Date.now();
     const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         'x-api-key': anthropicKey,
         'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
       },
       body: JSON.stringify({
         model: ANTHROPIC_MODEL,
         max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userContent }],
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'document',
+                source: {
+                  type: 'base64',
+                  media_type: 'application/pdf',
+                  data: pdfBase64,
+                },
+              },
+              { type: 'text', text: promptText },
+            ],
+          },
+        ],
       }),
     });
 
@@ -181,73 +238,107 @@ Deno.serve(async (req: Request) => {
     const outTok = aiJson?.usage?.output_tokens ?? 0;
     // claude-sonnet-4-6: ~$3 / 1M input, ~$15 / 1M output.
     const costEstimate = (inTok / 1_000_000) * 3 + (outTok / 1_000_000) * 15;
+    console.log('Anthropic out tokens:', outTok);
     console.log(
       `[fill-worksheet] ${worksheetId} model=${ANTHROPIC_MODEL} in=${inTok} out=${outTok} ` +
         `latency=${latencyMs}ms cost=$${costEstimate.toFixed(5)}`
     );
 
-    const rawText: string = aiJson?.content?.[0]?.text ?? '';
+    const rawText: string = (aiJson?.content ?? [])
+      .map((b: any) => (b.type === 'text' ? b.text : ''))
+      .join('');
+    console.log('Raw response preview:', rawText.slice(0, 200));
     const answers = parseAnswers(rawText);
 
-    // 6. Write answers onto the PDF.
-    const pdfDoc = await PDFDocument.load(pdfBytes);
-    // fontkit is required before embedding a custom (non-standard) TTF font.
-    pdfDoc.registerFontkit(fontkit);
+    // 6. Write answers onto the PDF (pdfDoc was loaded above for the dimensions).
+    console.log('PDF loaded, answers to draw:', answers.length);
 
-    // Embed a real handwriting font; fall back to Helvetica if the fetch fails.
-    let handFont: any;
+    // Bulletproof font section: the ENTIRE thing (registerFontkit + fetch +
+    // embed) is guarded, so ANY failure falls back to Helvetica and we still
+    // draw every answer. A throw here previously aborted the whole write.
+    let answerFont: any;
     try {
-      handFont = await loadHandwritingFont(pdfDoc, style);
-    } catch (fontErr) {
-      console.warn(
-        '[fill-worksheet] handwriting font load failed, using Helvetica:',
-        fontErr instanceof Error ? fontErr.message : fontErr
-      );
-      handFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      pdfDoc.registerFontkit(fontkit);
+      const fontUrl = style === 'messy' ? ARCHITECTS_DAUGHTER_TTF : CAVEAT_TTF;
+      const res = await fetch(fontUrl);
+      console.log('Font fetch status:', res.status);
+      if (!res.ok) throw new Error('Font fetch failed: ' + res.status);
+      const ttfBytes = await res.arrayBuffer();
+      answerFont = await pdfDoc.embedFont(ttfBytes);
+      console.log('Handwriting font embedded');
+    } catch (e) {
+      console.error('Font failed, using Helvetica:', e instanceof Error ? e.message : e);
+      answerFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      console.log('Font embedded successfully (Helvetica fallback)');
     }
 
-    const firstPage = pdfDoc.getPages()[0];
-    const { width, height } = firstPage.getSize();
+    // Pencil effect: gray (not pen blue), with slight per-answer shade variation
+    // so the writing doesn't look mechanically uniform.
+    const pencilColor = rgb(0.25, 0.25, 0.25);
+    const pencilColors = [
+      rgb(0.25, 0.25, 0.25), // normal pencil stroke
+      rgb(0.35, 0.35, 0.35), // slightly lighter
+      rgb(0.2, 0.2, 0.2), // slightly darker
+    ];
+    const getPencilColor = (index: number) => pencilColors[index % 3];
 
-    // Fill a realistic student name near the top-right (confirmed working position).
+    // Student name near the top-right, in pencil + handwriting font.
+    const nameX = width - 130;
+    const nameY = height - 58;
     firstPage.drawText('Alex Johnson', {
-      x: width - 180,
-      y: height - 58,
+      x: nameX,
+      y: nameY,
       size: 11,
-      font: handFont,
-      color: rgb(0.1, 0.1, 0.5),
+      font: answerFont,
+      color: pencilColor,
     });
+    console.log('Drew name: Alex Johnson at x,y:', nameX, nameY);
 
-    // Place answers inline with their questions: Q1–7 in the left column,
-    // Q8–12 in the right column, evenly spaced between y=620 and y=280.
-    const leftAnswers = answers.filter((_, i) => i < 7);
-    const rightAnswers = answers.filter((_, i) => i >= 7);
+    // Position each answer: column comes from the question index (x_percent from
+    // Claude is unreliable), y_percent gives the vertical position, and
+    // available_height_percent (clamped) decides how many lines fit.
+    answers.forEach((item, i) => {
+      const text = String(item.answer ?? '');
 
-    leftAnswers.forEach((item, i) => {
-      const y = 620 - i * (340 / Math.max(leftAnswers.length - 1, 1));
-      firstPage.drawText(sanitize(String(item.answer ?? '')), {
-        x: 200,
-        y,
-        size: 10,
-        font: handFont,
-        color: rgb(0.1, 0.1, 0.5),
-        maxWidth: 100,
-      });
-    });
+      const yPercent =
+        typeof item.y_percent === 'number'
+          ? item.y_percent
+          : ((i + 1) / (answers.length + 1)) * 100;
 
-    rightAnswers.forEach((item, i) => {
-      const y = 620 - i * (340 / Math.max(rightAnswers.length - 1, 1));
-      firstPage.drawText(sanitize(String(item.answer ?? '')), {
-        x: 480,
-        y,
-        size: 10,
-        font: handFont,
-        color: rgb(0.1, 0.1, 0.5),
-        maxWidth: 100,
-      });
+      // x_percent from Claude is unreliable — derive the column from the question
+      // index instead: 1-7 left, 8-12 right.
+      const isRightColumn = (item.index ?? 1) > 7;
+      const answerX = isRightColumn
+        ? Math.floor(width * 0.52)
+        : Math.floor(width * 0.22);
+
+      const answerY = height - Math.floor(height * (yPercent / 100)) - 30;
+      const availHeight = Math.max(item.available_height_percent ?? 8, 8);
+      const maxLines = availHeight < 8 ? 1 : 2;
+      const fontSize = 13 + Math.random();
+
+      drawMultilineAnswer(
+        firstPage,
+        text,
+        answerX,
+        answerY,
+        answerFont,
+        fontSize,
+        getPencilColor(i),
+        maxLines
+      );
+      console.log(
+        'Drew answer:',
+        item.answer,
+        'at x,y:',
+        answerX,
+        answerY,
+        `(col:${isRightColumn ? 'R' : 'L'} y%:${Math.round(yPercent)} avail%:${availHeight} maxLines:${maxLines})`
+      );
     });
 
     const filledBytes = await pdfDoc.save();
+    console.log('PDF saved, bytes:', filledBytes.length);
 
     // 7. Upload the filled PDF.
     const outputPath = `outputs/${worksheetId}.pdf`;

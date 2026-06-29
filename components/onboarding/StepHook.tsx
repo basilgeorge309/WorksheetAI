@@ -13,13 +13,13 @@ export default function StepHook({ onNext }: Props) {
 
       <View style={styles.headline}>
         <Text selectable={false} style={styles.line1}>
-          Your handwriting.
+          Your homework.
         </Text>
         <Text selectable={false} style={styles.line2}>
           Done in seconds.
         </Text>
         <Text selectable={false} style={styles.body}>
-          Upload any worksheet PDF and get it back filled in — in your
+          Upload any worksheet and get it back filled in — in your
           handwriting style.
         </Text>
       </View>

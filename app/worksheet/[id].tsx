@@ -21,7 +21,7 @@ export default function WorksheetDetailScreen() {
   const outputPath = params.outputPath ?? '';
 
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
-  const [webLoading, setWebLoading] = useState(true);
+  const [previewLoading, setPreviewLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -108,13 +108,12 @@ export default function WorksheetDetailScreen() {
         {signedUrl ? (
           <>
             <WebView
-              source={{
-                uri: `https://docs.google.com/viewer?embedded=true&url=${encodeURIComponent(signedUrl)}`,
-              }}
+              source={{ uri: signedUrl }}
               style={styles.webview}
-              onLoadEnd={() => setWebLoading(false)}
+              onLoadStart={() => setPreviewLoading(true)}
+              onLoadEnd={() => setPreviewLoading(false)}
             />
-            {webLoading && (
+            {previewLoading && (
               <View style={styles.previewOverlay}>
                 <ActivityIndicator color="#2563EB" />
               </View>
@@ -122,11 +121,9 @@ export default function WorksheetDetailScreen() {
           </>
         ) : (
           <View style={styles.previewOverlay}>
-            {error ? (
-              <Text style={styles.errorText}>{error}</Text>
-            ) : (
-              <ActivityIndicator color="#2563EB" />
-            )}
+            <Text style={styles.previewMessage}>
+              {error ?? 'Preview unavailable — tap Download to view'}
+            </Text>
           </View>
         )}
       </View>
@@ -201,6 +198,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,
+  },
+  previewMessage: {
+    fontSize: 14,
+    color: '#6B6B6B',
+    textAlign: 'center',
   },
   actions: {
     marginTop: 20,

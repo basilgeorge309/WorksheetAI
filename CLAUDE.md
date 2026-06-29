@@ -1,6 +1,6 @@
 @AGENTS.md
 
-# WorksheetAI — Claude Code Project Context
+# Scribbl — Claude Code Project Context
 
 ## What this app does
 Users upload a PDF of a paper worksheet. The AI reads the questions and fills in the answers in a realistic handwriting style. Users can choose a handwriting style (neat, messy, average) and a difficulty level (all correct, a few mistakes, realistic kid mistakes). They download or share the filled-in PDF.

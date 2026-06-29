@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "WorksheetAI",
-    "slug": "worksheet-ai",
+    "name": "Scribbl",
+    "slug": "scribbl",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -9,10 +9,10 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.worksheetai.app"
+      "bundleIdentifier": "com.scribbl.app"
     },
     "android": {
-      "package": "com.worksheetai.app",
+      "package": "com.scribbl.app",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

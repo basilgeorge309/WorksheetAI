@@ -126,7 +126,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.appName}>WorksheetAI</Text>
+      <Text style={styles.appName}>Scribbl</Text>
       <Text style={styles.usageText}>
         {usage === null
           ? 'Checking your free worksheets…'
