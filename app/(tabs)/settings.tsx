@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -9,13 +9,24 @@ import {
   View,
 } from 'react-native';
 
+import PaywallModal from '../../components/PaywallModal';
 import { useAuth } from '../../context/AuthContext';
+import { isProUser, restorePurchases } from '../../lib/revenuecat';
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPro, setIsPro] = useState<boolean | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+
+  const refreshPro = useCallback(() => {
+    isProUser().then(setIsPro);
+  }, []);
+
+  useFocusEffect(refreshPro);
 
   const handleSignOut = async () => {
     setError(null);
@@ -36,14 +47,53 @@ export default function SettingsScreen() {
     router.replace('/onboarding');
   };
 
+  const handleRestore = async () => {
+    setRestoring(true);
+    await restorePurchases();
+    setRestoring(false);
+    refreshPro();
+  };
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
-        <Text style={styles.subtitle}>
-          {user?.email ? `Signed in as ${user.email}` : 'Account and subscription options.'}
-        </Text>
+      <Text style={styles.title}>Settings</Text>
+      <Text style={styles.subtitle}>
+        {user?.email ? `Signed in as ${user.email}` : 'Account and subscription options.'}
+      </Text>
+
+      {/* Subscription */}
+      <Text style={styles.sectionLabel}>Subscription</Text>
+      <View style={styles.planRow}>
+        <Text style={styles.planText}>Plan</Text>
+        <View style={[styles.badge, isPro ? styles.badgePro : styles.badgeFree]}>
+          <Text style={[styles.badgeText, isPro ? styles.badgeTextPro : styles.badgeTextFree]}>
+            {isPro === null ? '…' : isPro ? 'Pro' : 'Free'}
+          </Text>
+        </View>
       </View>
+
+      {isPro === false && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setPaywallVisible(true)}
+          style={styles.upgradeButton}>
+          <Text style={styles.upgradeLabel}>Upgrade to Pro</Text>
+        </Pressable>
+      )}
+
+      <Pressable
+        accessibilityRole="button"
+        disabled={restoring}
+        onPress={handleRestore}
+        style={styles.restoreLink}>
+        {restoring ? (
+          <ActivityIndicator color="#6B6B6B" />
+        ) : (
+          <Text style={styles.restoreText}>Restore purchases</Text>
+        )}
+      </Pressable>
+
+      <View style={styles.spacer} />
 
       <View style={styles.footer}>
         {error && <Text style={styles.errorText}>{error}</Text>}
@@ -59,6 +109,15 @@ export default function SettingsScreen() {
           )}
         </Pressable>
       </View>
+
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        onSuccess={() => {
+          setPaywallVisible(false);
+          refreshPro();
+        }}
+      />
     </View>
   );
 }
@@ -69,11 +128,6 @@ const styles = StyleSheet.create({
     padding: 24,
     backgroundColor: '#FFFFFF',
   },
-  header: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   title: {
     fontSize: 22,
     fontWeight: '700',
@@ -83,7 +137,76 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 15,
     color: '#6B6B6B',
-    textAlign: 'center',
+  },
+  sectionLabel: {
+    marginTop: 32,
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    color: '#6B6B6B',
+  },
+  planRow: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  planText: {
+    fontSize: 15,
+    color: '#1A1A1A',
+  },
+  badge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  badgeFree: {
+    borderColor: '#E5E5E5',
+    backgroundColor: '#F3F4F6',
+  },
+  badgePro: {
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
+  },
+  badgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  badgeTextFree: {
+    color: '#6B6B6B',
+  },
+  badgeTextPro: {
+    color: '#2563EB',
+  },
+  upgradeButton: {
+    marginTop: 16,
+    width: '100%',
+    height: 52,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563EB',
+  },
+  upgradeLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  restoreLink: {
+    marginTop: 16,
+    alignItems: 'center',
+  },
+  restoreText: {
+    fontSize: 13,
+    color: '#6B6B6B',
+  },
+  spacer: {
+    flex: 1,
   },
   footer: {
     width: '100%',

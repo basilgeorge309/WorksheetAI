@@ -1,6 +1,7 @@
 import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { isProUser } from './revenuecat';
 import { supabase } from './supabase';
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB
@@ -14,7 +15,12 @@ export type UploadResult =
 
 export type FillResult = { outputPath: string } | { error: string };
 
-export type UsageInfo = { used: number; limit: number; canUse: boolean };
+export type UsageInfo = {
+  used: number;
+  limit: number;
+  canUse: boolean;
+  isPro: boolean;
+};
 
 function currentMonth(): string {
   const now = new Date();
@@ -132,6 +138,12 @@ export async function fillWorksheet(
  * read error (lets the user try) but never throws.
  */
 export async function checkUsage(userId: string): Promise<UsageInfo> {
+  // Pro is checked client-side via RevenueCat (no isPro DB column). Pro users
+  // are unlimited regardless of the monthly counter.
+  const pro = await isProUser();
+  if (pro) {
+    return { used: 0, limit: Infinity, canUse: true, isPro: true };
+  }
   try {
     const { data, error } = await supabase
       .from('usage')
@@ -140,9 +152,9 @@ export async function checkUsage(userId: string): Promise<UsageInfo> {
       .eq('month', currentMonth())
       .maybeSingle();
     const used = !error && data ? (data.worksheets_used as number) : 0;
-    return { used, limit: FREE_LIMIT, canUse: used < FREE_LIMIT };
+    return { used, limit: FREE_LIMIT, canUse: used < FREE_LIMIT, isPro: false };
   } catch {
-    return { used: 0, limit: FREE_LIMIT, canUse: true };
+    return { used: 0, limit: FREE_LIMIT, canUse: true, isPro: false };
   }
 }
 

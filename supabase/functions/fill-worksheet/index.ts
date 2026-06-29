@@ -7,6 +7,7 @@
 // ANTHROPIC_API_KEY lives ONLY here (server side). The client never sees it.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import fontkit from 'https://esm.sh/@pdf-lib/fontkit@1.1.1';
 import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
 import { extractText, getDocumentProxy } from 'https://esm.sh/unpdf@0.12.1';
 
@@ -25,8 +26,12 @@ Handwriting styles affect phrasing only (not rendering at this stage):
 - average: some abbreviations, casual but readable
 - messy: fragments ok, shorthand, rushed feel
 
+For each answer also return an "x_hint": "left" or "right" indicating which column
+the answer belongs in based on the worksheet layout, and "index": the question number
+(1-based). This helps with precise placement.
+
 Respond ONLY with a JSON array. No markdown, no explanation, no backticks.
-Format: [{"question": "...", "answer": "...", "position": "top|middle|bottom|unknown"}]`;
+Updated format: [{"question": "...", "answer": "...", "position": "top|middle|bottom|unknown", "x_hint": "left|right", "index": 1}]`;
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -35,7 +40,35 @@ const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
-type Answer = { question: string; answer: string; position: string };
+type Answer = {
+  question: string;
+  answer: string;
+  position?: string;
+  x_hint?: 'left' | 'right';
+  index?: number;
+};
+
+// Real-TTF handwriting fonts from the google/fonts GitHub repo. These serve
+// genuine TrueType bytes (magic 00010000), unlike the Google Fonts CSS API which
+// returns woff2 to modern user-agents and EOT to old ones — neither embeddable
+// by pdf-lib/fontkit. Caveat (a variable font) for neat/average, Architects
+// Daughter (static) for messy. Both verified to embed via @pdf-lib/fontkit.
+const CAVEAT_TTF =
+  'https://raw.githubusercontent.com/google/fonts/main/ofl/caveat/Caveat%5Bwght%5D.ttf';
+const ARCHITECTS_DAUGHTER_TTF =
+  'https://raw.githubusercontent.com/google/fonts/main/ofl/architectsdaughter/ArchitectsDaughter-Regular.ttf';
+
+// Fetch a handwriting TTF and embed it. Throws on failure so the caller can fall
+// back to a standard font.
+async function loadHandwritingFont(pdfDoc: any, style?: string): Promise<any> {
+  const ttfUrl = style === 'messy' ? ARCHITECTS_DAUGHTER_TTF : CAVEAT_TTF;
+  const fontResp = await fetch(ttfUrl);
+  if (!fontResp.ok) {
+    throw new Error(`Font fetch failed (${fontResp.status})`);
+  }
+  const fontBytes = new Uint8Array(await fontResp.arrayBuffer());
+  return await pdfDoc.embedFont(fontBytes);
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -158,24 +191,61 @@ Deno.serve(async (req: Request) => {
 
     // 6. Write answers onto the PDF.
     const pdfDoc = await PDFDocument.load(pdfBytes);
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-    const page = pdfDoc.getPages()[0];
+    // fontkit is required before embedding a custom (non-standard) TTF font.
+    pdfDoc.registerFontkit(fontkit);
 
-    const baseY: Record<string, number> = { top: 700, middle: 400, bottom: 150, unknown: 400 };
-    const seen: Record<string, number> = { top: 0, middle: 0, bottom: 0, unknown: 0 };
-
-    for (const item of answers) {
-      const pos = item.position in baseY ? item.position : 'unknown';
-      const y = baseY[pos] - seen[pos] * 40;
-      seen[pos] += 1;
-      page.drawText(sanitize(String(item.answer ?? '')), {
-        x: 72,
-        y,
-        size: 11,
-        font,
-        color: rgb(0.1, 0.1, 0.5),
-      });
+    // Embed a real handwriting font; fall back to Helvetica if the fetch fails.
+    let handFont: any;
+    try {
+      handFont = await loadHandwritingFont(pdfDoc, style);
+    } catch (fontErr) {
+      console.warn(
+        '[fill-worksheet] handwriting font load failed, using Helvetica:',
+        fontErr instanceof Error ? fontErr.message : fontErr
+      );
+      handFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
     }
+
+    const firstPage = pdfDoc.getPages()[0];
+    const { width, height } = firstPage.getSize();
+
+    // Fill a realistic student name near the top-right (confirmed working position).
+    firstPage.drawText('Alex Johnson', {
+      x: width - 180,
+      y: height - 58,
+      size: 11,
+      font: handFont,
+      color: rgb(0.1, 0.1, 0.5),
+    });
+
+    // Place answers inline with their questions: Q1–7 in the left column,
+    // Q8–12 in the right column, evenly spaced between y=620 and y=280.
+    const leftAnswers = answers.filter((_, i) => i < 7);
+    const rightAnswers = answers.filter((_, i) => i >= 7);
+
+    leftAnswers.forEach((item, i) => {
+      const y = 620 - i * (340 / Math.max(leftAnswers.length - 1, 1));
+      firstPage.drawText(sanitize(String(item.answer ?? '')), {
+        x: 200,
+        y,
+        size: 10,
+        font: handFont,
+        color: rgb(0.1, 0.1, 0.5),
+        maxWidth: 100,
+      });
+    });
+
+    rightAnswers.forEach((item, i) => {
+      const y = 620 - i * (340 / Math.max(rightAnswers.length - 1, 1));
+      firstPage.drawText(sanitize(String(item.answer ?? '')), {
+        x: 480,
+        y,
+        size: 10,
+        font: handFont,
+        color: rgb(0.1, 0.1, 0.5),
+        maxWidth: 100,
+      });
+    });
 
     const filledBytes = await pdfDoc.save();
 

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
+import PaywallModal from '../../components/PaywallModal';
 import { useAuth } from '../../context/AuthContext';
 import {
   checkUsage,
@@ -43,17 +44,23 @@ export default function HomeScreen() {
   const [difficulty, setDifficulty] = useState<Difficulty>('realistic');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
+  const [usage, setUsage] = useState<{
+    used: number;
+    limit: number;
+    isPro: boolean;
+  } | null>(null);
+  const [paywallVisible, setPaywallVisible] = useState(false);
 
   const refreshUsage = useCallback(() => {
     if (!user) return;
-    checkUsage(user.id).then((u) => setUsage({ used: u.used, limit: u.limit }));
+    checkUsage(user.id).then((u) =>
+      setUsage({ used: u.used, limit: u.limit, isPro: u.isPro })
+    );
   }, [user]);
 
   useFocusEffect(refreshUsage);
 
   const remaining = usage ? Math.max(0, usage.limit - usage.used) : null;
-  const canUse = usage ? usage.used < usage.limit : true;
 
   const pickFile = async () => {
     setError(null);
@@ -73,9 +80,10 @@ export default function HomeScreen() {
 
     // 1. Usage gate — before any upload, so a blocked user doesn't burn a slot.
     const usageNow = await checkUsage(user.id);
-    setUsage({ used: usageNow.used, limit: usageNow.limit });
+    setUsage({ used: usageNow.used, limit: usageNow.limit, isPro: usageNow.isPro });
     if (!usageNow.canUse) {
-      setError("You've used all 3 free worksheets. Upgrade for unlimited.");
+      // Exhausted free tier — open the paywall instead of an inline error.
+      setPaywallVisible(true);
       return;
     }
 
@@ -113,15 +121,18 @@ export default function HomeScreen() {
     );
   };
 
-  const fillDisabled = !file || loading || !canUse;
+  // Stay tappable when out of usage so the tap can open the paywall.
+  const fillDisabled = !file || loading;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.appName}>WorksheetAI</Text>
       <Text style={styles.usageText}>
-        {remaining === null
+        {usage === null
           ? 'Checking your free worksheets…'
-          : `${remaining} of ${usage?.limit ?? 3} remaining this month`}
+          : usage.isPro
+            ? 'Pro — Unlimited'
+            : `${remaining} of ${usage.limit} remaining this month`}
       </Text>
 
       {/* Upload area */}
@@ -190,6 +201,15 @@ export default function HomeScreen() {
           loading={loading}
         />
       </View>
+
+      <PaywallModal
+        visible={paywallVisible}
+        onClose={() => setPaywallVisible(false)}
+        onSuccess={() => {
+          setPaywallVisible(false);
+          refreshUsage();
+        }}
+      />
     </ScrollView>
   );
 }

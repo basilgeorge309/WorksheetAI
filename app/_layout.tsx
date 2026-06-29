@@ -12,6 +12,7 @@ import { useColorScheme } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { initRevenueCat } from '../lib/revenuecat';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -38,6 +39,11 @@ function RootLayoutNav() {
   const { session, loading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+
+  // Initialize RevenueCat once on startup (no-op / safe fallback in Expo Go).
+  useEffect(() => {
+    initRevenueCat();
+  }, []);
 
   // Hide the splash screen once we know whether there is a session.
   useEffect(() => {
