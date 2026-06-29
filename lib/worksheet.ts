@@ -4,8 +4,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { isProUser } from './revenuecat';
 import { supabase } from './supabase';
 
-const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB (photos run larger)
 const FREE_LIMIT = 3;
+
+export type FileType = 'pdf' | 'image';
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
 
@@ -32,20 +35,28 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Read a local PDF, validate size, upload to Storage, and create the worksheet
- * row (status `pending`). Returns ids or a surfaced error — never throws.
+ * Read a local PDF or image, validate size, upload to Storage, and create the
+ * worksheet row (status `pending`). Returns ids or a surfaced error — never throws.
  */
 export async function uploadWorksheet(
   uri: string,
-  userId: string
+  userId: string,
+  fileType: FileType
 ): Promise<UploadResult> {
   try {
+    const isPdf = fileType === 'pdf';
+    const ext = isPdf ? 'pdf' : 'jpg';
+    const mimeType = isPdf ? 'application/pdf' : 'image/jpeg';
+    const maxBytes = isPdf ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
+
     const info = await FileSystem.getInfoAsync(uri);
     if (!info.exists) {
       return { error: 'That file could not be found. Please pick it again.' };
     }
-    if (typeof info.size === 'number' && info.size > MAX_BYTES) {
-      return { error: 'That PDF is over 10MB. Please choose a smaller file.' };
+    if (typeof info.size === 'number' && info.size > maxBytes) {
+      return {
+        error: `That file is over ${isPdf ? '10MB' : '20MB'}. Please choose a smaller one.`,
+      };
     }
 
     const base64 = await FileSystem.readAsStringAsync(uri, {
@@ -53,10 +64,10 @@ export async function uploadWorksheet(
     });
     const bytes = decode(base64);
 
-    const storagePath = `uploads/${userId}/${Date.now()}.pdf`;
+    const storagePath = `uploads/${userId}/${Date.now()}.${ext}`;
     const { error: uploadError } = await supabase.storage
       .from('worksheets')
-      .upload(storagePath, bytes, { contentType: 'application/pdf' });
+      .upload(storagePath, bytes, { contentType: mimeType });
     if (uploadError) {
       return { error: uploadError.message };
     }

@@ -149,23 +149,39 @@ Deno.serve(async (req: Request) => {
 
     await supabase.from('worksheets').update({ status: 'processing' }).eq('id', worksheetId);
 
-    // 1. Download the uploaded PDF with the service role.
+    // 1. Download the uploaded file (PDF or image) with the service role.
     const { data: fileData, error: dlError } = await supabase.storage
       .from('worksheets')
       .download(storagePath);
     if (dlError || !fileData) {
-      throw new Error(`Could not download source PDF: ${dlError?.message ?? 'missing'}`);
+      throw new Error(`Could not download source file: ${dlError?.message ?? 'missing'}`);
     }
-    const pdfBytes = new Uint8Array(await fileData.arrayBuffer());
+    const fileBytes = new Uint8Array(await fileData.arrayBuffer());
 
-    // 2. Send the PDF to Claude directly (native PDF/document support). It reads
-    // the page visually, so it works on scanned/image-only worksheets that have
-    // no extractable text layer.
-    const pdfBase64 = bytesToBase64(pdfBytes);
+    // Detect the input type from the storage path extension.
+    const ext = storagePath.split('.').pop()?.toLowerCase() ?? '';
+    const isPdf = ext === 'pdf';
+    const isImage = ['jpg', 'jpeg', 'png', 'webp'].includes(ext);
+    const imageMediaType = ext === 'png' ? 'image/png' : 'image/jpeg';
+    console.log('Input type:', isPdf ? 'pdf' : isImage ? `image/${ext}` : ext);
 
-    // Load the PDF now so we can tell Claude the exact page dimensions and use
-    // its per-question placement estimates directly (same pdfDoc is drawn on below).
-    const pdfDoc = await PDFDocument.load(pdfBytes);
+    // 2. Send the file to Claude directly (native PDF + Vision). It reads the page
+    // visually, so it works on scanned/photo worksheets with no text layer.
+    const fileBase64 = bytesToBase64(fileBytes);
+
+    // Build the pdf-lib canvas we draw answers onto. PDFs load directly; images
+    // are embedded into a new single-page PDF so the same positioning code runs
+    // and the output stays a downloadable PDF. (Positioning logic is unchanged.)
+    let pdfDoc: any;
+    if (isPdf) {
+      pdfDoc = await PDFDocument.load(fileBytes);
+    } else {
+      pdfDoc = await PDFDocument.create();
+      const embedded =
+        ext === 'png' ? await pdfDoc.embedPng(fileBytes) : await pdfDoc.embedJpg(fileBytes);
+      const page = pdfDoc.addPage([embedded.width, embedded.height]);
+      page.drawImage(embedded, { x: 0, y: 0, width: embedded.width, height: embedded.height });
+    }
     const firstPage = pdfDoc.getPages()[0];
     const { width, height } = firstPage.getSize();
     console.log('First page size:', width, height);
@@ -197,6 +213,17 @@ Deno.serve(async (req: Request) => {
       `Respond ONLY with a JSON array, no markdown, no explanation:\n` +
       `[{"question": "14.13 = x - 4.25", "answer": "x = 14.13 + 4.25\\nx = 18.38", "index": 1, "x_percent": 15, "y_percent": 22, "available_height_percent": 6}]`;
 
+    // PDF -> document block; image -> image block (Claude Vision).
+    const contentBlock = isPdf
+      ? {
+          type: 'document',
+          source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 },
+        }
+      : {
+          type: 'image',
+          source: { type: 'base64', media_type: imageMediaType, data: fileBase64 },
+        };
+
     const startedAt = Date.now();
     const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -212,14 +239,7 @@ Deno.serve(async (req: Request) => {
           {
             role: 'user',
             content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: pdfBase64,
-                },
-              },
+              contentBlock,
               { type: 'text', text: promptText },
             ],
           },
