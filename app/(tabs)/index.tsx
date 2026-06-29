@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+import * as DocumentPicker from 'expo-document-picker';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { useCallback, useState } from 'react';
 import {
   Pressable,
   ScrollView,
@@ -8,120 +10,256 @@ import {
   View,
 } from 'react-native';
 
-type HandwritingStyle = 'neat' | 'average' | 'messy';
+import OnboardingButton from '../../components/onboarding/OnboardingButton';
+import { useAuth } from '../../context/AuthContext';
+import {
+  checkUsage,
+  fillWorksheet,
+  incrementUsage,
+  uploadWorksheet,
+} from '../../lib/worksheet';
 
-const STYLE_OPTIONS: { key: HandwritingStyle; label: string }[] = [
-  { key: 'neat', label: 'Neat' },
-  { key: 'average', label: 'Average' },
-  { key: 'messy', label: 'Messy' },
+type Style = 'neat' | 'average' | 'messy';
+type Difficulty = 'perfect' | 'realistic' | 'student';
+
+const STYLE_CHIPS: { value: Style; label: string }[] = [
+  { value: 'neat', label: 'Neat' },
+  { value: 'average', label: 'Average' },
+  { value: 'messy', label: 'Messy' },
+];
+
+const DIFFICULTY_CHIPS: { value: Difficulty; label: string }[] = [
+  { value: 'perfect', label: 'Perfect' },
+  { value: 'realistic', label: 'Realistic' },
+  { value: 'student', label: 'Student' },
 ];
 
 export default function HomeScreen() {
-  const [selectedStyle, setSelectedStyle] = useState<HandwritingStyle>('average');
-  // No file picking wired up this session — kept null so "Fill it in" stays disabled.
-  const [pickedFileName] = useState<string | null>(null);
+  const { user } = useAuth();
+  const router = useRouter();
 
-  const canFill = pickedFileName !== null;
+  const [file, setFile] = useState<{ uri: string; name: string } | null>(null);
+  const [style, setStyle] = useState<Style>('average');
+  const [difficulty, setDifficulty] = useState<Difficulty>('realistic');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
+
+  const refreshUsage = useCallback(() => {
+    if (!user) return;
+    checkUsage(user.id).then((u) => setUsage({ used: u.used, limit: u.limit }));
+  }, [user]);
+
+  useFocusEffect(refreshUsage);
+
+  const remaining = usage ? Math.max(0, usage.limit - usage.used) : null;
+  const canUse = usage ? usage.used < usage.limit : true;
+
+  const pickFile = async () => {
+    setError(null);
+    const result = await DocumentPicker.getDocumentAsync({
+      type: 'application/pdf',
+      copyToCacheDirectory: true,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    if (!asset) return;
+    setFile({ uri: asset.uri, name: asset.name ?? 'worksheet.pdf' });
+  };
+
+  const handleFill = async () => {
+    if (!user || !file) return;
+    setError(null);
+
+    // 1. Usage gate — before any upload, so a blocked user doesn't burn a slot.
+    const usageNow = await checkUsage(user.id);
+    setUsage({ used: usageNow.used, limit: usageNow.limit });
+    if (!usageNow.canUse) {
+      setError("You've used all 3 free worksheets. Upgrade for unlimited.");
+      return;
+    }
+
+    setLoading(true);
+
+    // 3. Upload.
+    const uploaded = await uploadWorksheet(file.uri, user.id);
+    if ('error' in uploaded) {
+      setError(uploaded.error);
+      setLoading(false);
+      return;
+    }
+
+    // 4. Count the usage now that the upload succeeded.
+    await incrementUsage(user.id);
+
+    // 5. Fill.
+    const filled = await fillWorksheet(
+      uploaded.worksheetId,
+      uploaded.storagePath,
+      style,
+      difficulty,
+      subjectFor(style)
+    );
+    if ('error' in filled) {
+      setError(filled.error);
+      setLoading(false);
+      return;
+    }
+
+    // 6. Done — then navigate (never while loading is true).
+    setLoading(false);
+    router.push(
+      `/worksheet/${uploaded.worksheetId}?outputPath=${encodeURIComponent(filled.outputPath)}`
+    );
+  };
+
+  const fillDisabled = !file || loading || !canUse;
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={styles.content}>
+    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.appName}>WorksheetAI</Text>
-      <Text style={styles.tagline}>
-        Upload a worksheet and let AI fill in the answers.
+      <Text style={styles.usageText}>
+        {remaining === null
+          ? 'Checking your free worksheets…'
+          : `${remaining} of ${usage?.limit ?? 3} remaining this month`}
       </Text>
 
-      <Pressable style={styles.uploadButton}>
-        <Ionicons name="cloud-upload-outline" size={24} color="#ffffff" />
-        <Text style={styles.uploadButtonText}>Upload Worksheet (PDF)</Text>
+      {/* Upload area */}
+      <Pressable style={styles.uploadCard} onPress={pickFile} disabled={loading}>
+        {file ? (
+          <View style={styles.uploadFilled}>
+            <Ionicons name="document-text-outline" size={28} color="#1A1A1A" />
+            <Text style={styles.fileName} numberOfLines={1}>
+              {file.name}
+            </Text>
+            <Text style={styles.changeLink}>Change</Text>
+          </View>
+        ) : (
+          <View style={styles.uploadEmpty}>
+            <Ionicons name="cloud-upload-outline" size={32} color="#6B6B6B" />
+            <Text style={styles.uploadPrompt}>Tap to upload worksheet PDF</Text>
+          </View>
+        )}
       </Pressable>
 
-      <Text style={styles.usageText}>3 free worksheets remaining this month</Text>
-
+      {/* Handwriting style */}
       <Text style={styles.sectionLabel}>Handwriting style</Text>
       <View style={styles.chipRow}>
-        {STYLE_OPTIONS.map((option) => {
-          const isSelected = option.key === selectedStyle;
+        {STYLE_CHIPS.map((chip) => {
+          const selected = chip.value === style;
           return (
             <Pressable
-              key={option.key}
-              onPress={() => setSelectedStyle(option.key)}
-              style={[styles.chip, isSelected && styles.chipSelected]}>
-              <Text
-                style={[
-                  styles.chipText,
-                  isSelected && styles.chipTextSelected,
-                ]}>
-                {option.label}
+              key={chip.value}
+              disabled={loading}
+              onPress={() => setStyle(chip.value)}
+              style={[styles.chip, selected && styles.chipSelected]}>
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                {chip.label}
               </Text>
             </Pressable>
           );
         })}
       </View>
 
-      <Pressable
-        disabled={!canFill}
-        style={[styles.fillButton, !canFill && styles.fillButtonDisabled]}>
-        <Text
-          style={[
-            styles.fillButtonText,
-            !canFill && styles.fillButtonTextDisabled,
-          ]}>
-          Fill it in →
-        </Text>
-      </Pressable>
+      {/* Difficulty */}
+      <Text style={styles.sectionLabel}>Difficulty</Text>
+      <View style={styles.chipRow}>
+        {DIFFICULTY_CHIPS.map((chip) => {
+          const selected = chip.value === difficulty;
+          return (
+            <Pressable
+              key={chip.value}
+              disabled={loading}
+              onPress={() => setDifficulty(chip.value)}
+              style={[styles.chip, selected && styles.chipSelected]}>
+              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
+                {chip.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {error && <Text style={styles.errorText}>{error}</Text>}
+
+      <View style={styles.fillBlock}>
+        <OnboardingButton
+          label="Fill it in →"
+          onPress={handleFill}
+          disabled={fillDisabled}
+          loading={loading}
+        />
+      </View>
     </ScrollView>
   );
+}
+
+// Map the chosen style onto a coarse subject hint for the AI. (Real subject
+// selection comes from onboarding answers in a later session.)
+function subjectFor(_style: Style): string {
+  return 'general';
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
-    backgroundColor: '#F8F9FB',
+    backgroundColor: '#FFFFFF',
   },
   content: {
     padding: 24,
     paddingTop: 32,
   },
   appName: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  tagline: {
-    marginTop: 6,
-    fontSize: 15,
-    color: '#6B7280',
-  },
-  uploadButton: {
-    marginTop: 28,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: '#4F46E5',
-    paddingVertical: 18,
-    borderRadius: 14,
-  },
-  uploadButtonText: {
-    color: '#ffffff',
-    fontSize: 17,
+    fontSize: 28,
     fontWeight: '700',
+    color: '#1A1A1A',
   },
   usageText: {
-    marginTop: 12,
-    textAlign: 'center',
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6B6B6B',
+  },
+  uploadCard: {
+    marginTop: 24,
+    height: 160,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: '#E5E5E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  uploadEmpty: {
+    alignItems: 'center',
+    gap: 10,
+  },
+  uploadPrompt: {
+    fontSize: 15,
+    color: '#6B6B6B',
+  },
+  uploadFilled: {
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+  },
+  fileName: {
+    fontSize: 15,
+    color: '#1A1A1A',
+    maxWidth: '100%',
+  },
+  changeLink: {
     fontSize: 14,
-    color: '#6B7280',
+    fontWeight: '600',
+    color: '#2563EB',
   },
   sectionLabel: {
-    marginTop: 32,
-    fontSize: 13,
+    marginTop: 28,
+    fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    color: '#9CA3AF',
+    color: '#6B6B6B',
   },
   chipRow: {
     marginTop: 12,
@@ -134,12 +272,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#ffffff',
+    borderColor: '#E5E5E5',
+    backgroundColor: '#FFFFFF',
   },
   chipSelected: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
+    borderColor: '#2563EB',
+    backgroundColor: '#EFF6FF',
   },
   chipText: {
     fontSize: 15,
@@ -147,24 +285,14 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
   chipTextSelected: {
-    color: '#4F46E5',
+    color: '#2563EB',
   },
-  fillButton: {
-    marginTop: 36,
-    alignItems: 'center',
-    paddingVertical: 18,
-    borderRadius: 14,
-    backgroundColor: '#111827',
+  errorText: {
+    marginTop: 20,
+    fontSize: 13,
+    color: '#DC2626',
   },
-  fillButtonDisabled: {
-    backgroundColor: '#E5E7EB',
-  },
-  fillButtonText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  fillButtonTextDisabled: {
-    color: '#9CA3AF',
+  fillBlock: {
+    marginTop: 28,
   },
 });
