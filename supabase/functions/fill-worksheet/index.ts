@@ -1,17 +1,18 @@
 // Scribbl — fill-worksheet edge function (Deno).
 //
-// Flow: download uploaded PDF (service role) -> send PDF to Claude (native PDF) ->
-// the model generates answers -> pdf-lib writes them onto the PDF ->
+// Flow: download uploaded file (service role) -> send it to OpenAI (Responses API,
+// native PDF via input_file / image via input_image) -> the model returns answers
+// + a blank-space bounding box per question -> pdf-lib writes them onto the PDF ->
 // upload to outputs/{worksheetId}.pdf -> mark the row complete.
 //
-// ANTHROPIC_API_KEY lives ONLY here (server side). The client never sees it.
+// OPENAI_API_KEY lives ONLY here (server side). The client never sees it.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import fontkit from 'https://esm.sh/@pdf-lib/fontkit@1.1.1';
 import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
 
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
-const MAX_TOKENS = 2000;
+const OPENAI_MODEL = 'gpt-5.4';
+const MAX_OUTPUT_TOKENS = 3000;
 
 // CORS: kept as '*' on purpose. This function is called from the React Native
 // app, which (unlike a browser) does not send an Origin header, so browser-style
@@ -29,10 +30,16 @@ type Answer = {
   question: string;
   answer: string;
   index?: number;
-  x_percent?: number; // how far from the LEFT edge the answer should start, 0..100
-  y_percent?: number; // the question's position from the TOP, 0..100
-  available_height_percent?: number; // vertical space below the question, 0..100
+  // Bounding box of the genuinely-blank space to write into, as PERCENTAGES of the
+  // full page (0..100). left/right are from the LEFT edge; top/bottom from the TOP.
+  box_left?: number;
+  box_top?: number;
+  box_right?: number;
+  box_bottom?: number;
 };
+
+const clamp = (val: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, val));
 
 // Real-TTF handwriting fonts from the google/fonts GitHub repo. These serve
 // genuine TrueType bytes (magic 00010000), unlike the Google Fonts CSS API which
@@ -71,9 +78,30 @@ function sanitizeLine(text: string): string {
   return text.replace(/→/g, '->').replace(/[^\x20-\x7E]/g, '').trim().slice(0, 80);
 }
 
-// Draw a multi-line answer block, one line per "\n", stepping down by 2.2x the
-// font size. Skips anything that would fall off the bottom of the page. Returns
-// the total vertical height the block consumed.
+// Word-wrap one logical line to fit `maxWidth` PDF points, measuring with the real
+// font metrics. Returns the wrapped physical lines (a single over-long word is
+// kept as-is rather than dropped).
+function wrapToWidth(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+  const words = sanitizeLine(text).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const out: string[] = [];
+  let current = words[0];
+  for (let i = 1; i < words.length; i++) {
+    const candidate = `${current} ${words[i]}`;
+    if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+      current = candidate;
+    } else {
+      out.push(current);
+      current = words[i];
+    }
+  }
+  out.push(current);
+  return out;
+}
+
+// Draw a multi-line answer block: each "\n" segment is word-wrapped to `maxWidth`,
+// then the whole thing is capped at 2 physical lines (stepping down 1.4x the font
+// size) so it never overflows the box. Skips lines that would fall off the page.
 function drawMultilineAnswer(
   page: any,
   text: string,
@@ -82,22 +110,21 @@ function drawMultilineAnswer(
   font: any,
   fontSize: number,
   color: any,
-  maxLines = 2
+  maxWidth: number
 ): number {
-  // Clamp to the space the model said is available below the question.
-  const lines = text.split('\n').slice(0, maxLines);
-  const lineHeight = fontSize * 2.2;
+  const segments = text.split('\n');
+  const wrapped: string[] = [];
+  for (const seg of segments) {
+    for (const line of wrapToWidth(seg, font, fontSize, maxWidth)) {
+      wrapped.push(line);
+    }
+  }
+  const lines = wrapped.slice(0, 2); // never more than 2 physical lines
+  const lineHeight = fontSize * 1.4;
   lines.forEach((line, i) => {
     const y = startY - i * lineHeight;
     if (y > 40) {
-      page.drawText(sanitizeLine(line), {
-        x: startX,
-        y,
-        size: fontSize,
-        font,
-        color,
-        maxWidth: 180,
-      });
+      page.drawText(line, { x: startX, y, size: fontSize, font, color, maxWidth });
     }
   });
   return lines.length * lineHeight;
@@ -136,7 +163,7 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const openaiKey = Deno.env.get('OPENAI_API_KEY');
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
   // Parse + validate body up front so we know which worksheet to mark on failure.
@@ -189,8 +216,8 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'Usage limit reached' }, 429);
     }
 
-    if (!anthropicKey) {
-      throw new Error('ANTHROPIC_API_KEY is not configured.');
+    if (!openaiKey) {
+      throw new Error('OPENAI_API_KEY is not configured.');
     }
 
     // M4 — usage is counted only on SUCCESS now (see the complete-update below),
@@ -249,49 +276,51 @@ Deno.serve(async (req: Request) => {
       `- student: ~80% correct, some wrong answers, rushed feel\n\n` +
       `Subject: ${subject ?? 'general'}\n\n` +
       `For math problems, show one working step then the final answer, e.g.\n` +
-      `"x = 14.13 + 4.25" then "x = 18.38".\n\n` +
-      `For each question on this worksheet:\n` +
-      `- Estimate x_percent: how far from the LEFT edge the answer should\n` +
-      `  start (0-100). Match the indentation of the question.\n` +
-      `- Estimate y_percent: the question's position from TOP (0-100).\n` +
-      `- Estimate available_height_percent: how much vertical space exists\n` +
-      `  BELOW this question before the next question starts (0-100).\n\n` +
-      `Write the answer in that space. If available_height_percent is small\n` +
-      `(under 5), keep the answer to 1 line only. If it's larger, show\n` +
-      `working steps on line 1 and final answer on line 2.\n\n` +
-      `This worksheet has dimensions ${width}x${height} PDF points.\n\n` +
+      `"x = 14.13 + 4.25" then "x = 18.38". Keep each answer to AT MOST 2 lines.\n\n` +
+      `For each question on this worksheet, identify:\n` +
+      `1. The question text\n` +
+      `2. Your answer (showing work where relevant, max 2 lines)\n` +
+      `3. A bounding box for where the answer should be written, as PERCENTAGES\n` +
+      `   of the full page width/height:\n` +
+      `   - box_left: left edge of available blank space (0-100)\n` +
+      `   - box_top: TOP of the blank writing space (0-100)\n` +
+      `   - box_right: right edge of available blank space (0-100)\n` +
+      `   - box_bottom: bottom edge, before the next question starts (0-100)\n\n` +
+      `CRITICAL — box_top must be the position of the BLANK SPACE itself (below,\n` +
+      `or to the right of, the question), NOT the position of the question text.\n` +
+      `The question text sits ABOVE box_top and must NEVER be inside the box.\n` +
+      `Because the page is measured from the top down, box_top is a LARGER\n` +
+      `percentage than the question's own line (the blank space is further down).\n` +
+      `box_bottom is larger still (just above the next question).\n\n` +
+      `Look carefully at the actual blank space on the page — margins, the area\n` +
+      `after an equals sign, blank lines, empty boxes — and report where there\n` +
+      `is genuinely empty room to write, not just a rough position estimate.\n\n` +
+      `This worksheet is ${width}x${height} PDF points (box values are percentages,\n` +
+      `not points).\n\n` +
       `Respond ONLY with a JSON array, no markdown, no explanation:\n` +
-      `[{"question": "14.13 = x - 4.25", "answer": "x = 14.13 + 4.25\\nx = 18.38", "index": 1, "x_percent": 15, "y_percent": 22, "available_height_percent": 6}]`;
+      `[{"question": "14.13 = x - 4.25", "answer": "x = 14.13 + 4.25\\nx = 18.38", "index": 1, "box_left": 15, "box_top": 22, "box_right": 45, "box_bottom": 28}]`;
 
-    // PDF -> document block; image -> image block (Claude Vision).
-    const contentBlock = isPdf
-      ? {
-          type: 'document',
-          source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 },
-        }
-      : {
-          type: 'image',
-          source: { type: 'base64', media_type: imageMediaType, data: fileBase64 },
-        };
+    // OpenAI Responses API content parts: PDF -> input_file (data URI); image ->
+    // input_image (data URI). (input_file is for documents; images use input_image.)
+    const dataUri = `data:${isPdf ? 'application/pdf' : imageMediaType};base64,${fileBase64}`;
+    const filePart = isPdf
+      ? { type: 'input_file', filename: 'worksheet.pdf', file_data: dataUri }
+      : { type: 'input_image', image_url: dataUri };
 
     const startedAt = Date.now();
-    const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+    const aiResp = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
+        Authorization: `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: MAX_TOKENS,
-        messages: [
+        model: OPENAI_MODEL,
+        max_output_tokens: MAX_OUTPUT_TOKENS,
+        input: [
           {
             role: 'user',
-            content: [
-              contentBlock,
-              { type: 'text', text: promptText },
-            ],
+            content: [filePart, { type: 'input_text', text: promptText }],
           },
         ],
       }),
@@ -299,25 +328,33 @@ Deno.serve(async (req: Request) => {
 
     if (!aiResp.ok) {
       const detail = await aiResp.text();
-      throw new Error(`Anthropic API error ${aiResp.status}: ${detail.slice(0, 200)}`);
+      // Surface the real OpenAI error (e.g. invalid model id) so it lands on the
+      // row + logs and we can stop rather than silently producing nothing.
+      throw new Error(`OpenAI API error ${aiResp.status}: ${detail.slice(0, 300)}`);
     }
 
     const aiJson = await aiResp.json();
     const latencyMs = Date.now() - startedAt;
     const inTok = aiJson?.usage?.input_tokens ?? 0;
     const outTok = aiJson?.usage?.output_tokens ?? 0;
-    // claude-sonnet-4-6: ~$3 / 1M input, ~$15 / 1M output.
-    const costEstimate = (inTok / 1_000_000) * 3 + (outTok / 1_000_000) * 15;
-    console.log('Anthropic out tokens:', outTok);
+    // GPT-5.4 pricing placeholder — ESTIMATE ONLY, verify against current OpenAI
+    // rates. Token counts above are exact regardless.
+    const costEstimate = (inTok / 1_000_000) * 5 + (outTok / 1_000_000) * 15;
+    console.log('OpenAI model:', OPENAI_MODEL);
     console.log(
-      `[fill-worksheet] ${worksheetId} model=${ANTHROPIC_MODEL} in=${inTok} out=${outTok} ` +
-        `latency=${latencyMs}ms cost=$${costEstimate.toFixed(5)}`
+      `[fill-worksheet] ${worksheetId} model=${OPENAI_MODEL} in=${inTok} out=${outTok} ` +
+        `latency=${latencyMs}ms cost=$${costEstimate.toFixed(5)} (est, verify)`
     );
 
-    const rawText: string = (aiJson?.content ?? [])
-      .map((b: any) => (b.type === 'text' ? b.text : ''))
-      .join('');
-    console.log('Raw response preview:', rawText.slice(0, 200));
+    // Responses API: text lives in output[].content[].text (type 'output_text').
+    // Fall back to the convenience `output_text` field if present.
+    const rawText: string =
+      aiJson?.output
+        ?.find((item: any) => item.type === 'message')
+        ?.content?.find((c: any) => c.type === 'output_text')?.text ??
+      aiJson?.output_text ??
+      '';
+    console.log('Raw response preview:', rawText.slice(0, 300));
     const answers = parseAnswers(rawText);
 
     // 2.1 — no questions found (blank/unreadable/non-worksheet content): mark the
@@ -371,46 +408,58 @@ Deno.serve(async (req: Request) => {
     // M2 — no hardcoded student name is drawn (it would stamp the same stranger's
     // name on every user's worksheet). The Name field, if any, is left blank.
 
-    // Position each answer: column comes from the question index (x_percent from
-    // Claude is unreliable), y_percent gives the vertical position, and
-    // available_height_percent (clamped) decides how many lines fit.
+    // Position each answer inside the blank-space bounding box the model reported
+    // (percentages of the page). All four values are clamped so a hallucinated box
+    // can't break rendering, then converted to PDF points (origin bottom-left, so
+    // top/bottom percentages are flipped against `height`).
     drawAnswers.forEach((item, i) => {
       const text = String(item.answer ?? '');
 
-      const yPercent =
-        typeof item.y_percent === 'number'
-          ? item.y_percent
-          : ((i + 1) / (drawAnswers.length + 1)) * 100;
+      const boxLeft = clamp(item.box_left ?? 10, 0, 95);
+      const boxTop = clamp(item.box_top ?? 20, 5, 95);
+      const boxRight = clamp(item.box_right ?? boxLeft + 30, boxLeft + 5, 100);
+      const boxBottom = clamp(item.box_bottom ?? boxTop + 8, boxTop, 100);
 
-      // x_percent from Claude is unreliable — derive the column from the question
-      // index instead: 1-7 left, 8-12 right.
-      const isRightColumn = (item.index ?? 1) > 7;
-      const answerX = isRightColumn
-        ? Math.floor(width * 0.52)
-        : Math.floor(width * 0.22);
+      const boxLeftPx = (boxLeft / 100) * width;
+      const boxRightPx = (boxRight / 100) * width;
+      const boxTopPx = height - (boxTop / 100) * height;
+      const boxBottomPx = height - (boxBottom / 100) * height;
+      const boxWidthPx = boxRightPx - boxLeftPx;
+      const boxHeightPx = boxTopPx - boxBottomPx;
 
-      const answerY = height - Math.floor(height * (yPercent / 100)) - 30;
-      const availHeight = Math.max(item.available_height_percent ?? 8, 8);
-      const maxLines = availHeight < 8 ? 1 : 2;
-      const fontSize = 13 + Math.random();
+      const lineCount = Math.max(1, String(text).split('\n').length);
+      // Fit the font to the box height; never below an 8pt readable minimum.
+      let fontSize = clamp(Math.floor((boxHeightPx / lineCount) * 0.7), 8, 14);
+      let drawX = boxLeftPx;
+      let drawWidth = boxWidthPx;
 
+      // Tiny/hallucinated box: fall back to a conservative small font at the box's
+      // top-left, with a generous width so the text still renders somewhere sane.
+      if (boxWidthPx < 20 || boxHeightPx < 10) {
+        fontSize = 9;
+        drawWidth = Math.max(boxWidthPx, width * 0.3);
+      }
+
+      // Anchor to the TOP of the box and flow DOWNWARD (drawMultilineAnswer
+      // subtracts per line). The first baseline sits one font-size + a small pad
+      // below box_top so the text falls INSIDE the blank space, never up on the
+      // question line above box_top. (Verified: this is below box_top, not at it.)
+      const BOX_TOP_PADDING = 3;
+      const startY = boxTopPx - fontSize - BOX_TOP_PADDING;
       drawMultilineAnswer(
         firstPage,
         text,
-        answerX,
-        answerY,
+        drawX,
+        startY,
         answerFont,
         fontSize,
         getPencilColor(i),
-        maxLines
+        drawWidth
       );
       console.log(
-        'Drew answer:',
-        item.answer,
-        'at x,y:',
-        answerX,
-        answerY,
-        `(col:${isRightColumn ? 'R' : 'L'} y%:${Math.round(yPercent)} avail%:${availHeight} maxLines:${maxLines})`
+        `Drew answer #${item.index ?? i + 1}: ${JSON.stringify(item.answer)} ` +
+          `box[L:${boxLeft} T:${boxTop} R:${boxRight} B:${boxBottom}] -> ` +
+          `x:${Math.round(drawX)} y:${Math.round(startY)} w:${Math.round(drawWidth)} font:${fontSize}`
       );
     });
 

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -18,8 +19,12 @@ import {
   signInWithGoogle,
   signUpWithEmail,
 } from '../../lib/auth';
-import { border, colors, radius, type } from '../../constants/theme';
+import { border, colors, radius, shadow, type } from '../../constants/theme';
 import OnboardingButton from './OnboardingButton';
+
+// Same legal pages used in Settings.
+const TERMS_URL = 'https://basilgeorge309.github.io/worksheetai/terms.html';
+const PRIVACY_URL = 'https://basilgeorge309.github.io/worksheetai/privacy.html';
 
 type Props = {
   // Called on successful authentication. The shell marks onboarding complete
@@ -103,120 +108,145 @@ export default function StepFreetier({ onNext }: Props) {
         contentContainerStyle={styles.container}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}>
-        <View style={styles.headerBlock}>
-        <Text selectable={false} style={styles.title}>
-          You&apos;re in.
-        </Text>
-        <Text selectable={false} style={styles.subtitle}>
-          3 free worksheets. No card needed.
-        </Text>
-
-        <View style={styles.barBlock}>
-          <View style={styles.barTrack}>
-            <View style={styles.barFill} />
-          </View>
-          <Text selectable={false} style={styles.barCaption}>
-            3 of 3 worksheets remaining
+        {/* Header */}
+        <View style={styles.header}>
+          <Text selectable={false} style={styles.pencil}>
+            ✏️
+          </Text>
+          <Text selectable={false} style={styles.title}>
+            Welcome to Scribbl
+          </Text>
+          <Text selectable={false} style={styles.tagline}>
+            Your handwriting, done in seconds.
           </Text>
         </View>
-      </View>
 
-      {/* Apple — black, white text (App Store requirement) */}
-      <Pressable
-        accessibilityRole="button"
-        disabled={anyBusy}
-        onPress={handleApple}
-        style={[styles.appleButton, anyBusy && styles.buttonDimmed]}>
-        {busy === 'apple' ? (
-          <ActivityIndicator color={colors.paper} />
-        ) : (
-          <Text selectable={false} style={styles.appleLabel}>
-            {'  Sign in with Apple'}
+        {/* Body */}
+        <View style={styles.body}>
+          {/* Apple — black, white text (App Store requirement) */}
+          <Pressable
+            accessibilityRole="button"
+            disabled={anyBusy}
+            onPress={handleApple}
+            style={[styles.appleButton, anyBusy && styles.buttonDimmed]}>
+            {busy === 'apple' ? (
+              <ActivityIndicator color={colors.paper} />
+            ) : (
+              <Text selectable={false} style={styles.appleLabel}>
+                Continue with Apple
+              </Text>
+            )}
+          </Pressable>
+
+          {/* Google — white with border, dark text (brand requirement) */}
+          <Pressable
+            accessibilityRole="button"
+            disabled={anyBusy}
+            onPress={handleGoogle}
+            style={[styles.googleButton, anyBusy && styles.buttonDimmed]}>
+            {busy === 'google' ? (
+              <ActivityIndicator color={colors.ink} />
+            ) : (
+              <Text selectable={false} style={styles.googleLabel}>
+                Continue with Google
+              </Text>
+            )}
+          </Pressable>
+
+          {/* OR divider */}
+          <View style={styles.dividerRow}>
+            <View style={styles.hairline} />
+            <Text selectable={false} style={styles.orText}>
+              or
+            </Text>
+            <View style={styles.hairline} />
+          </View>
+
+          {/* Email */}
+          <Text selectable={false} style={styles.fieldLabel}>
+            Email
           </Text>
-        )}
-      </Pressable>
+          <TextInput
+            style={styles.input}
+            placeholder="name@email.com"
+            placeholderTextColor={colors.mutedText}
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="email-address"
+            textContentType="emailAddress"
+            editable={!anyBusy}
+            value={email}
+            onChangeText={setEmail}
+          />
 
-      {/* Google — white with border, dark text (brand requirement) */}
-      <Pressable
-        accessibilityRole="button"
-        disabled={anyBusy}
-        onPress={handleGoogle}
-        style={[styles.googleButton, anyBusy && styles.buttonDimmed]}>
-        {busy === 'google' ? (
-          <ActivityIndicator color={colors.ink} />
-        ) : (
-          <Text selectable={false} style={styles.googleLabel}>
-            {'  Sign in with Google'}
+          {/* Password */}
+          <Text selectable={false} style={[styles.fieldLabel, styles.fieldLabelSpaced]}>
+            Password
           </Text>
-        )}
-      </Pressable>
+          <TextInput
+            style={styles.input}
+            placeholder="••••••••"
+            placeholderTextColor={colors.mutedText}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            textContentType="password"
+            editable={!anyBusy}
+            value={password}
+            onChangeText={setPassword}
+          />
 
-      <View style={styles.dividerRow}>
-        <View style={styles.hairline} />
-        <Text selectable={false} style={styles.orText}>
-          or
-        </Text>
-        <View style={styles.hairline} />
-      </View>
+          {error && (
+            <Text selectable={false} style={styles.errorText}>
+              {error}
+            </Text>
+          )}
+          {info && (
+            <Text selectable={false} style={styles.infoText}>
+              {info}
+            </Text>
+          )}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Email address"
-        placeholderTextColor={colors.graphite}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-        textContentType="emailAddress"
-        editable={!anyBusy}
-        value={email}
-        onChangeText={setEmail}
-      />
-      <TextInput
-        style={[styles.input, styles.inputTight]}
-        placeholder="Password"
-        placeholderTextColor={colors.graphite}
-        secureTextEntry
-        autoCapitalize="none"
-        autoCorrect={false}
-        textContentType="password"
-        editable={!anyBusy}
-        value={password}
-        onChangeText={setPassword}
-      />
+          {/* Primary — ink, serif-italic, label switches by mode */}
+          <View style={styles.submitBlock}>
+            <OnboardingButton
+              label={isSignUp ? 'Create my account  →' : 'Sign in  →'}
+              onPress={handleEmail}
+              disabled={anyBusy && busy !== 'email'}
+              loading={busy === 'email'}
+            />
+          </View>
 
-      <View style={styles.submitBlock}>
-        <OnboardingButton
-          label={isSignUp ? 'Sign up' : 'Sign in'}
-          onPress={handleEmail}
-          disabled={anyBusy && busy !== 'email'}
-          loading={busy === 'email'}
-        />
-      </View>
+          {/* Toggle */}
+          <Pressable
+            accessibilityRole="button"
+            disabled={anyBusy}
+            onPress={() => {
+              setIsSignUp((v) => !v);
+              setError(null);
+              setInfo(null);
+            }}
+            style={styles.toggleWrap}>
+            <Text selectable={false} style={styles.toggleText}>
+              {isSignUp ? 'Already have an account? ' : 'New here? '}
+              <Text style={styles.toggleAction}>
+                {isSignUp ? 'Sign in' : 'Create an account'}
+              </Text>
+            </Text>
+          </Pressable>
 
-      {error && (
-        <Text selectable={false} style={styles.errorText}>
-          {error}
-        </Text>
-      )}
-      {info && (
-        <Text selectable={false} style={styles.infoText}>
-          {info}
-        </Text>
-      )}
-
-      <Pressable
-        accessibilityRole="button"
-        disabled={anyBusy}
-        onPress={() => {
-          setIsSignUp((v) => !v);
-          setError(null);
-          setInfo(null);
-        }}
-        style={styles.toggleWrap}>
-          <Text selectable={false} style={styles.toggleText}>
-            {isSignUp ? 'Already have an account? Sign in' : 'New here? Create an account'}
+          {/* Legal footer */}
+          <Text selectable={false} style={styles.footerText}>
+            By continuing, you agree to our{' '}
+            <Text style={styles.footerLink} onPress={() => Linking.openURL(TERMS_URL)}>
+              Terms
+            </Text>
+            {' and '}
+            <Text style={styles.footerLink} onPress={() => Linking.openURL(PRIVACY_URL)}>
+              Privacy Policy
+            </Text>
           </Text>
-        </Pressable>
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -228,90 +258,76 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    paddingLeft: 20,
-    borderLeftWidth: 2,
-    borderLeftColor: colors.marginRed,
-    paddingRight: 24,
-    paddingTop: 8,
-    paddingBottom: 24,
+    backgroundColor: colors.paper,
+    paddingBottom: 28,
   },
-  headerBlock: {
-    width: '100%',
+  header: {
     alignItems: 'center',
+    paddingTop: 12,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.cardBorder,
+  },
+  pencil: {
+    fontSize: 44,
+    lineHeight: 52,
+    textAlign: 'center',
   },
   title: {
     ...type.displaySerif,
-    fontSize: 32,
+    fontSize: 26,
+    marginTop: 10,
     color: colors.ink,
     textAlign: 'center',
   },
-  subtitle: {
-    ...type.small,
-    marginTop: 12,
+  tagline: {
+    ...type.body,
+    marginTop: 6,
     color: colors.graphite,
     textAlign: 'center',
   },
-  barBlock: {
-    marginTop: 32,
-    width: '100%',
-  },
-  barTrack: {
-    width: '100%',
-    height: 8,
-    borderRadius: radius.sm,
-    backgroundColor: colors.paper,
-    ...border.hairline,
-    overflow: 'hidden',
-  },
-  barFill: {
-    width: '100%',
-    height: 8,
-    borderRadius: radius.sm,
-    backgroundColor: colors.ink,
-  },
-  barCaption: {
-    ...type.small,
-    marginTop: 8,
-    color: colors.graphite,
-    textAlign: 'right',
+  body: {
+    paddingHorizontal: 24,
+    paddingTop: 28,
   },
   appleButton: {
-    marginTop: 24,
     width: '100%',
-    height: 52,
+    height: 54,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#000000',
+    backgroundColor: colors.ink,
+    ...shadow.button,
   },
   appleLabel: {
     ...type.body,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.paper,
   },
   googleButton: {
     marginTop: 12,
     width: '100%',
-    height: 52,
+    height: 54,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.paper,
-    ...border.rule,
+    ...border.hairline,
   },
   googleLabel: {
     ...type.body,
-    fontWeight: '600',
+    fontWeight: '700',
     color: colors.ink,
   },
   buttonDimmed: {
     opacity: 0.6,
   },
   dividerRow: {
-    marginTop: 12,
+    marginTop: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 12,
   },
   hairline: {
     flex: 1,
@@ -319,42 +335,62 @@ const styles = StyleSheet.create({
     backgroundColor: colors.cardBorder,
   },
   orText: {
-    ...type.small,
-    color: colors.graphite,
+    ...type.label,
+    color: colors.mutedText,
+  },
+  fieldLabel: {
+    ...type.label,
+    color: colors.mutedText,
+    marginTop: 24,
+    marginBottom: 8,
+  },
+  fieldLabelSpaced: {
+    marginTop: 16,
   },
   input: {
     ...type.body,
-    marginTop: 12,
     width: '100%',
-    height: 48,
+    height: 50,
     borderRadius: radius.md,
     ...border.hairline,
     paddingHorizontal: 16,
     color: colors.ink,
     backgroundColor: colors.paper,
   },
-  inputTight: {
-    marginTop: 8,
-  },
   submitBlock: {
-    marginTop: 8,
+    marginTop: 24,
   },
   errorText: {
     ...type.small,
-    marginTop: 12,
+    marginTop: 16,
     color: colors.errorRed,
   },
   infoText: {
     ...type.small,
-    marginTop: 12,
+    marginTop: 16,
     color: colors.graphite,
   },
   toggleWrap: {
-    marginTop: 12,
+    marginTop: 20,
     alignItems: 'center',
   },
   toggleText: {
     ...type.small,
+    color: colors.graphite,
+  },
+  toggleAction: {
     color: colors.ink,
+    fontWeight: '700',
+  },
+  footerText: {
+    marginTop: 20,
+    fontSize: 11,
+    lineHeight: 16,
+    color: colors.mutedText,
+    textAlign: 'center',
+  },
+  footerLink: {
+    color: colors.graphite,
+    textDecorationLine: 'underline',
   },
 });

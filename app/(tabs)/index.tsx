@@ -14,6 +14,7 @@ import {
 
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
 import PaywallModal from '../../components/PaywallModal';
+import UsageBar from '../../components/UsageBar';
 import { border, colors, radius, spacing, type } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
 import { isConnected } from '../../lib/network';
@@ -80,15 +81,6 @@ export default function HomeScreen() {
   }, [user]);
 
   useFocusEffect(refreshUsage);
-
-  const remaining = usage ? Math.max(0, usage.limit - usage.used) : null;
-  // Usage text: green when worksheets remain, red when out, neutral while loading.
-  const usageColor =
-    usage === null
-      ? colors.graphite
-      : !usage.isPro && remaining === 0
-        ? colors.alertRed
-        : colors.successGreen;
 
   const clearSelection = () => {
     setSource(null);
@@ -240,13 +232,13 @@ export default function HomeScreen() {
     <View style={styles.root}>
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <Text style={styles.appName}>Scribbl</Text>
-        <Text style={[styles.usageText, { color: usageColor }]}>
-          {usage === null
-            ? 'Checking your free worksheets…'
-            : usage.isPro
-              ? 'Pro — Unlimited'
-              : `${remaining} of ${usage.limit} remaining this month`}
-        </Text>
+        <View style={styles.usageBarWrap}>
+          <UsageBar
+            used={usage?.used ?? 0}
+            limit={usage?.limit ?? 3}
+            isPro={usage?.isPro}
+          />
+        </View>
 
         {/* Source picker */}
         <Text style={styles.sectionLabel}>Add a worksheet</Text>
@@ -385,8 +377,7 @@ const styles = StyleSheet.create({
     ...type.displaySerif,
     color: colors.ink,
   },
-  usageText: {
-    ...type.label,
+  usageBarWrap: {
     marginTop: spacing.sm,
   },
   sourceChip: {
