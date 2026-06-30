@@ -426,10 +426,16 @@ Deno.serve(async (req: Request) => {
       throw new Error(`Could not upload filled PDF: ${upError.message}`);
     }
 
-    // 8. Mark the worksheet complete.
+    // 8. Mark the worksheet complete, and persist the answer count + style so the
+    // worksheet screen can show "{N} questions answered, {style}-style".
     await supabase
       .from('worksheets')
-      .update({ status: 'complete', output_path: outputPath })
+      .update({
+        status: 'complete',
+        output_path: outputPath,
+        answer_count: answers.length,
+        handwriting_style: style ?? null,
+      })
       .eq('id', worksheetId);
 
     // 9. Done.

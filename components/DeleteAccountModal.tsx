@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 
 import { deleteAccount } from '../lib/auth';
+import { colors, radius, border, type } from '../constants/theme';
 
 type Props = {
   visible: boolean;
@@ -68,7 +69,7 @@ export default function DeleteAccountModal({ visible, onClose }: Props) {
           <TextInput
             style={styles.input}
             placeholder="Type DELETE"
-            placeholderTextColor="#6B6B6B"
+            placeholderTextColor={colors.graphite}
             autoCapitalize="characters"
             autoCorrect={false}
             editable={!deleting}
@@ -88,7 +89,7 @@ export default function DeleteAccountModal({ visible, onClose }: Props) {
             onPress={handleDelete}
             style={[styles.deleteButton, !canDelete && styles.deleteButtonDisabled]}>
             {deleting ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.paper} />
             ) : (
               <Text selectable={false} style={styles.deleteLabel}>
                 Delete my account
@@ -125,9 +126,9 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 32,
@@ -137,53 +138,51 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E5E5E5',
+    backgroundColor: colors.paperLine,
     marginBottom: 20,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    ...type.titleSerif,
+    color: colors.ink,
   },
   body: {
+    ...type.small,
     marginTop: 12,
-    fontSize: 14,
     lineHeight: 20,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   input: {
+    ...border.hairline,
+    ...type.body,
     marginTop: 20,
     width: '100%',
     height: 48,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderRadius: radius.sharp,
     paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#1A1A1A',
-    backgroundColor: '#FFFFFF',
+    color: colors.ink,
+    backgroundColor: colors.paper,
   },
   errorText: {
+    ...type.small,
     marginTop: 12,
-    fontSize: 13,
-    color: '#DC2626',
+    color: colors.errorRed,
   },
   deleteButton: {
     marginTop: 16,
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#DC2626',
+    backgroundColor: colors.ink,
   },
   deleteButtonDisabled: {
-    backgroundColor: '#E5E5E5',
+    backgroundColor: colors.mutedText,
   },
   deleteLabel: {
-    fontSize: 16,
+    ...type.body,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.paper,
   },
   cancelButton: {
     marginTop: 12,
@@ -191,7 +190,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   cancelLabel: {
-    fontSize: 15,
-    color: '#6B6B6B',
+    ...type.body,
+    color: colors.graphite,
   },
 });

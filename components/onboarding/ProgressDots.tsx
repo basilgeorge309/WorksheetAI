@@ -1,5 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
+import { border, colors, radius } from '../../constants/theme';
+
 type Props = {
   total: number;
   current: number;
@@ -13,7 +15,7 @@ export default function ProgressDots({ total, current }: Props) {
         return (
           <View
             key={i}
-            style={[styles.dot, isCurrent ? styles.dotCurrent : styles.dotInactive]}
+            style={[styles.square, isCurrent ? styles.squareActive : styles.squareInactive]}
           />
         );
       })}
@@ -28,16 +30,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  square: {
+    width: 10,
+    height: 10,
+    borderRadius: radius.sharp,
   },
-  dotCurrent: {
-    backgroundColor: '#2563EB',
-    transform: [{ scale: 1.2 }],
+  squareActive: {
+    backgroundColor: colors.ink,
+    ...border.rule,
   },
-  dotInactive: {
-    backgroundColor: '#E5E5E5',
+  squareInactive: {
+    backgroundColor: 'transparent',
+    ...border.rule,
   },
 });

@@ -11,6 +11,7 @@ import {
 
 import OnboardingButton from './onboarding/OnboardingButton';
 import { purchasePro, restorePurchases } from '../lib/revenuecat';
+import { colors, radius, border, type } from '../constants/theme';
 
 type Props = {
   visible: boolean;
@@ -83,7 +84,7 @@ export default function PaywallModal({ visible, onClose, onSuccess }: Props) {
           <View style={styles.features}>
             {FEATURES.map((f) => (
               <View key={f} style={styles.featureRow}>
-                <Ionicons name="checkmark" size={18} color="#2563EB" />
+                <Ionicons name="checkmark" size={18} color={colors.successGreen} />
                 <Text selectable={false} style={styles.featureText}>
                   {f}
                 </Text>
@@ -113,7 +114,7 @@ export default function PaywallModal({ visible, onClose, onSuccess }: Props) {
             onPress={() => handlePurchase('annual')}
             style={[styles.annualButton, anyBusy && styles.dim]}>
             {busy === 'annual' ? (
-              <ActivityIndicator color="#1A1A1A" />
+              <ActivityIndicator color={colors.ink} />
             ) : (
               <Text selectable={false} style={styles.annualLabel}>
                 Try Annual — $29.99/yr
@@ -133,7 +134,7 @@ export default function PaywallModal({ visible, onClose, onSuccess }: Props) {
             onPress={handleRestore}
             style={styles.textLink}>
             {busy === 'restore' ? (
-              <ActivityIndicator color="#6B6B6B" />
+              <ActivityIndicator color={colors.graphite} />
             ) : (
               <Text selectable={false} style={styles.textLinkLabel}>
                 Restore purchases
@@ -171,9 +172,9 @@ const styles = StyleSheet.create({
   },
   sheet: {
     height: 520,
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
     paddingHorizontal: 24,
     paddingTop: 12,
     paddingBottom: 24,
@@ -183,18 +184,17 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E5E5E5',
+    backgroundColor: colors.paperLine,
     marginBottom: 20,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    ...type.titleSerif,
+    color: colors.ink,
   },
   subtitle: {
+    ...type.small,
     marginTop: 8,
-    fontSize: 15,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   features: {
     marginTop: 32,
@@ -206,44 +206,44 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   featureText: {
-    fontSize: 15,
-    color: '#1A1A1A',
+    ...type.body,
+    color: colors.graphite,
   },
   price: {
+    ...type.titleSerif,
     marginTop: 32,
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    color: colors.ink,
   },
   priceSub: {
+    ...type.small,
     marginTop: 4,
-    fontSize: 13,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   primaryBlock: {
     marginTop: 24,
   },
   annualButton: {
+    ...border.hairline,
     marginTop: 12,
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
+    backgroundColor: 'transparent',
   },
   annualLabel: {
-    fontSize: 16,
+    ...type.body,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: colors.ink,
   },
   dim: {
     opacity: 0.6,
   },
   errorText: {
+    ...type.small,
     marginTop: 12,
-    fontSize: 13,
-    color: '#DC2626',
+    color: colors.errorRed,
     textAlign: 'center',
   },
   textLink: {
@@ -251,7 +251,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   textLinkLabel: {
-    fontSize: 13,
-    color: '#6B6B6B',
+    ...type.small,
+    color: colors.graphite,
   },
 });

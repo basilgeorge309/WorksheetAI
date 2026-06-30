@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { border, colors, radius, type } from '../../constants/theme';
+
 type Props = {
   onNext: () => void;
   onAnswer: (key: 'behind', value: string) => void;
@@ -62,7 +64,9 @@ export default function StepBehind({ onNext, onAnswer, selected }: Props) {
                 accessibilityRole="button"
                 onPress={() => handleSelect(option.value)}
                 style={[styles.card, isSelected && styles.cardSelected]}>
-                <Text selectable={false} style={styles.cardLabel}>
+                <Text
+                  selectable={false}
+                  style={[styles.cardLabel, isSelected && styles.cardLabelSelected]}>
                   {option.label}
                 </Text>
               </Pressable>
@@ -84,18 +88,18 @@ export default function StepBehind({ onNext, onAnswer, selected }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingLeft: 56,
+    paddingRight: 24,
     paddingTop: 8,
   },
   header: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    ...type.displaySerif,
+    color: colors.ink,
   },
   subheader: {
+    ...type.small,
     marginTop: 8,
-    fontSize: 14,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   cards: {
     marginTop: 32,
@@ -104,23 +108,25 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paper,
+    ...border.hairline,
   },
   cardSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.ink,
+    ...border.rule,
   },
   cardLabel: {
-    fontSize: 16,
-    color: '#1A1A1A',
+    ...type.body,
+    color: colors.ink,
+  },
+  cardLabelSelected: {
+    color: colors.paper,
   },
   respect: {
+    ...type.small,
     marginTop: 8,
     marginLeft: 4,
-    fontSize: 12,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
 });

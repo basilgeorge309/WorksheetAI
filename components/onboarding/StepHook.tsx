@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { colors, type } from '../../constants/theme';
 import OnboardingButton from './OnboardingButton';
 
 type Props = {
@@ -34,7 +35,8 @@ export default function StepHook({ onNext }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingLeft: 56,
+    paddingRight: 24,
     paddingBottom: 24,
   },
   spacer: {
@@ -44,19 +46,19 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   line1: {
+    ...type.displaySerif,
     fontSize: 36,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    color: colors.ink,
   },
   line2: {
+    ...type.displaySerif,
     fontSize: 36,
-    fontWeight: '700',
-    color: '#2563EB',
+    color: colors.alertRed,
   },
   body: {
+    ...type.small,
     marginTop: 16,
-    fontSize: 16,
     lineHeight: 24,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
 });

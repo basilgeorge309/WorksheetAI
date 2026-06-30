@@ -2,9 +2,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Pressable,
   StyleSheet,
   Text,
@@ -12,7 +13,10 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+import Confetti from '../../components/Confetti';
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
+import RuledBackground from '../../components/RuledBackground';
+import { border, colors, radius, spacing, type } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
 export default function WorksheetDetailScreen() {
@@ -21,10 +25,12 @@ export default function WorksheetDetailScreen() {
     id: string;
     outputPath?: string;
     status?: string;
+    style?: string;
   }>();
   const worksheetId = params.id;
   const outputPath = params.outputPath ?? '';
   const status = params.status ?? '';
+  const styleParam = params.style;
   const showProcessing = status !== 'complete' && !outputPath;
 
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -32,6 +38,63 @@ export default function WorksheetDetailScreen() {
   const [downloading, setDownloading] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [meta, setMeta] = useState<{ style: string | null; count: number | null }>({
+    style: null,
+    count: null,
+  });
+
+  // Celebration animations (fire once when the completed worksheet first shows).
+  const [confettiOn, setConfettiOn] = useState(false);
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const titleAnim = useRef(new Animated.Value(0)).current;
+  const contentAnim = useRef(new Animated.Value(0)).current;
+  const celebratedRef = useRef(false);
+
+  useEffect(() => {
+    if (showProcessing || celebratedRef.current) return;
+    celebratedRef.current = true; // once per completion, not on every re-render
+    setConfettiOn(true);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 5,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(titleAnim, {
+      toValue: 1,
+      duration: 250,
+      delay: 300,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(contentAnim, {
+      toValue: 1,
+      duration: 200,
+      delay: 500,
+      useNativeDriver: true,
+    }).start();
+  }, [showProcessing, scaleAnim, titleAnim, contentAnim]);
+
+  // Fetch the worksheet row for the real answer count + handwriting style
+  // (used in the celebration subtitle). RLS limits this to the user's own row.
+  useEffect(() => {
+    let active = true;
+    if (!worksheetId) return;
+    (async () => {
+      const { data } = await supabase
+        .from('worksheets')
+        .select('handwriting_style, answer_count')
+        .eq('id', worksheetId)
+        .single();
+      if (!active || !data) return;
+      setMeta({
+        style: (data.handwriting_style as string | null) ?? null,
+        count: (data.answer_count as number | null) ?? null,
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [worksheetId]);
 
   // Resolve a 1-hour signed URL for the (private) output PDF.
   useEffect(() => {
@@ -103,9 +166,13 @@ export default function WorksheetDetailScreen() {
   if (showProcessing) {
     return (
       <View style={[styles.container, styles.processingContainer]}>
-        <Ionicons name="hourglass-outline" size={48} color="#D1D5DB" />
-        <Text style={styles.processingTitle}>Still working on it</Text>
-        <Text style={styles.processingSubtitle}>Check back in a moment.</Text>
+        <Ionicons name="hourglass-outline" size={48} color={colors.mutedText} />
+        <Text selectable={false} style={styles.processingTitle}>
+          Still working on it
+        </Text>
+        <Text selectable={false} style={styles.processingSubtitle}>
+          Check back in a moment.
+        </Text>
         <View style={styles.processingButton}>
           <OnboardingButton label="Go back" onPress={() => router.back()} />
         </View>
@@ -113,19 +180,42 @@ export default function WorksheetDetailScreen() {
     );
   }
 
+  // Prefer real row data; fall back to the route's style param, then generic.
+  const subtitleStyle = meta.style ?? styleParam;
+  const subtitle =
+    meta.count != null && subtitleStyle
+      ? `${meta.count} questions answered, ${subtitleStyle}-style`
+      : subtitleStyle
+        ? `Answers filled in, ${subtitleStyle}-style.`
+        : 'Your answers are filled in.';
+
   return (
     <View style={styles.container}>
+      <RuledBackground />
+      <Confetti trigger={confettiOn} />
+
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Go back"
         onPress={() => router.back()}
         style={styles.backButton}>
-        <Ionicons name="chevron-back" size={24} color="#6B6B6B" />
+        <Ionicons name="chevron-back" size={24} color={colors.graphite} />
       </Pressable>
 
-      <Text style={styles.title}>Your worksheet</Text>
+      {/* Celebration header */}
+      <View style={styles.celebration}>
+        <Animated.View style={[styles.checkCircle, { transform: [{ scale: scaleAnim }] }]}>
+          <Ionicons name="checkmark" size={32} color={colors.paper} />
+        </Animated.View>
+        <Animated.Text selectable={false} style={[styles.celebrateTitle, { opacity: titleAnim }]}>
+          Worksheet ready!
+        </Animated.Text>
+        <Animated.Text selectable={false} style={[styles.celebrateSubtitle, { opacity: titleAnim }]}>
+          {subtitle}
+        </Animated.Text>
+      </View>
 
-      <View style={styles.preview}>
+      <Animated.View style={[styles.preview, { opacity: contentAnim }]}>
         {signedUrl ? (
           <>
             <WebView
@@ -136,31 +226,37 @@ export default function WorksheetDetailScreen() {
             />
             {previewLoading && (
               <View style={styles.previewOverlay}>
-                <ActivityIndicator color="#2563EB" />
+                <ActivityIndicator color={colors.ink} />
               </View>
             )}
           </>
         ) : (
           <View style={styles.previewOverlay}>
-            <Text style={styles.previewMessage}>
+            <Text selectable={false} style={styles.previewMessage}>
               {error ?? 'Preview unavailable — tap Download to view'}
             </Text>
           </View>
         )}
-      </View>
+      </Animated.View>
 
-      {error && signedUrl && <Text style={styles.errorText}>{error}</Text>}
+      {error && signedUrl && (
+        <Text selectable={false} style={styles.errorText}>
+          {error}
+        </Text>
+      )}
 
-      <View style={styles.actions}>
+      <Animated.View style={[styles.actions, { opacity: contentAnim }]}>
         <Pressable
           accessibilityRole="button"
           disabled={!signedUrl || downloading}
           onPress={handleDownload}
           style={[styles.actionButton, styles.downloadButton, (!signedUrl || downloading) && styles.dim]}>
           {downloading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={colors.paper} />
           ) : (
-            <Text style={styles.downloadLabel}>Download</Text>
+            <Text selectable={false} style={styles.downloadLabel}>
+              Download
+            </Text>
           )}
         </Pressable>
 
@@ -170,12 +266,14 @@ export default function WorksheetDetailScreen() {
           onPress={handleShare}
           style={[styles.actionButton, styles.shareButton, (!signedUrl || shareLoading) && styles.dim]}>
           {shareLoading ? (
-            <ActivityIndicator color="#1A1A1A" />
+            <ActivityIndicator color={colors.ink} />
           ) : (
-            <Text style={styles.shareLabel}>Share</Text>
+            <Text selectable={false} style={styles.shareLabel}>
+              Share
+            </Text>
           )}
         </Pressable>
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -183,8 +281,11 @@ export default function WorksheetDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
-    padding: 24,
+    backgroundColor: colors.paper,
+    paddingTop: spacing.xxl,
+    paddingBottom: spacing.xxl,
+    paddingRight: spacing.xxl,
+    paddingLeft: 56,
   },
   backButton: {
     width: 40,
@@ -197,34 +298,56 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   processingTitle: {
-    marginTop: 16,
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    marginTop: spacing.lg,
+    ...type.titleSerif,
+    color: colors.ink,
   },
   processingSubtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    color: '#6B6B6B',
+    marginTop: spacing.xs,
+    ...type.small,
+    color: colors.graphite,
   },
   processingButton: {
-    marginTop: 24,
+    marginTop: spacing.xxl,
     width: '100%',
   },
-  title: {
-    marginTop: 8,
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#1A1A1A',
+  celebration: {
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  // The ink "stamp" — minimal depth retained (the one allowed shadow).
+  checkCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: radius.pill,
+    backgroundColor: colors.ink,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.ink,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  celebrateTitle: {
+    marginTop: spacing.lg,
+    ...type.displaySerif,
+    color: colors.ink,
+    textAlign: 'center',
+  },
+  celebrateSubtitle: {
+    marginTop: spacing.xs,
+    ...type.bodySerif,
+    color: colors.graphite,
+    textAlign: 'center',
   },
   preview: {
-    marginTop: 20,
     height: 400,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderRadius: radius.sharp,
     overflow: 'hidden',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.paper,
+    ...border.hairline,
   },
   webview: {
     flex: 1,
@@ -237,50 +360,49 @@ const styles = StyleSheet.create({
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
+    padding: spacing.lg,
   },
   previewMessage: {
-    fontSize: 14,
-    color: '#6B6B6B',
+    ...type.small,
+    color: colors.graphite,
     textAlign: 'center',
   },
   actions: {
-    marginTop: 20,
+    marginTop: spacing.xl,
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
   },
   actionButton: {
     flex: 1,
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
   },
   downloadButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.ink,
   },
   downloadLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    ...type.bodySerif,
+    fontSize: 17,
+    color: colors.paper,
   },
   shareButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    backgroundColor: 'transparent',
+    ...border.rule,
   },
   shareLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    ...type.bodySerif,
+    fontSize: 17,
+    color: colors.ink,
   },
   dim: {
     opacity: 0.6,
   },
   errorText: {
-    marginTop: 12,
-    fontSize: 13,
-    color: '#DC2626',
+    marginTop: spacing.md,
+    ...type.small,
+    color: colors.errorRed,
     textAlign: 'center',
   },
 });

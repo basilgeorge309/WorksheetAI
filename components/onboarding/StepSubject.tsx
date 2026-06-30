@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { border, colors, radius, type } from '../../constants/theme';
+
 type Props = {
   onNext: () => void;
   onAnswer: (key: 'subject', value: string) => void;
@@ -66,18 +68,18 @@ export default function StepSubject({ onNext, onAnswer, selected }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingLeft: 56,
+    paddingRight: 24,
     paddingTop: 8,
   },
   header: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    ...type.displaySerif,
+    color: colors.ink,
   },
   subheader: {
+    ...type.small,
     marginTop: 8,
-    fontSize: 14,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   cards: {
     marginTop: 32,
@@ -86,20 +88,19 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paper,
+    ...border.hairline,
   },
   cardSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    backgroundColor: colors.ink,
+    ...border.rule,
   },
   cardLabel: {
-    fontSize: 16,
-    color: '#1A1A1A',
+    ...type.body,
+    color: colors.ink,
   },
   cardLabelSelected: {
-    color: '#1A1A1A',
+    color: colors.paper,
   },
 });

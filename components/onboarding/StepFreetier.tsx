@@ -18,6 +18,7 @@ import {
   signInWithGoogle,
   signUpWithEmail,
 } from '../../lib/auth';
+import { border, colors, radius, type } from '../../constants/theme';
 import OnboardingButton from './OnboardingButton';
 
 type Props = {
@@ -127,7 +128,7 @@ export default function StepFreetier({ onNext }: Props) {
         onPress={handleApple}
         style={[styles.appleButton, anyBusy && styles.buttonDimmed]}>
         {busy === 'apple' ? (
-          <ActivityIndicator color="#FFFFFF" />
+          <ActivityIndicator color={colors.paper} />
         ) : (
           <Text selectable={false} style={styles.appleLabel}>
             {'  Sign in with Apple'}
@@ -142,7 +143,7 @@ export default function StepFreetier({ onNext }: Props) {
         onPress={handleGoogle}
         style={[styles.googleButton, anyBusy && styles.buttonDimmed]}>
         {busy === 'google' ? (
-          <ActivityIndicator color="#1A1A1A" />
+          <ActivityIndicator color={colors.ink} />
         ) : (
           <Text selectable={false} style={styles.googleLabel}>
             {'  Sign in with Google'}
@@ -161,7 +162,7 @@ export default function StepFreetier({ onNext }: Props) {
       <TextInput
         style={styles.input}
         placeholder="Email address"
-        placeholderTextColor="#6B6B6B"
+        placeholderTextColor={colors.graphite}
         autoCapitalize="none"
         autoCorrect={false}
         keyboardType="email-address"
@@ -173,7 +174,7 @@ export default function StepFreetier({ onNext }: Props) {
       <TextInput
         style={[styles.input, styles.inputTight]}
         placeholder="Password"
-        placeholderTextColor="#6B6B6B"
+        placeholderTextColor={colors.graphite}
         secureTextEntry
         autoCapitalize="none"
         autoCorrect={false}
@@ -227,7 +228,8 @@ const styles = StyleSheet.create({
   },
   container: {
     flexGrow: 1,
-    paddingHorizontal: 24,
+    paddingLeft: 56,
+    paddingRight: 24,
     paddingTop: 8,
     paddingBottom: 24,
   },
@@ -236,15 +238,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
+    ...type.displaySerif,
     fontSize: 32,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    color: colors.ink,
     textAlign: 'center',
   },
   subtitle: {
+    ...type.small,
     marginTop: 12,
-    fontSize: 16,
-    color: '#6B6B6B',
+    color: colors.graphite,
     textAlign: 'center',
   },
   barBlock: {
@@ -254,51 +256,51 @@ const styles = StyleSheet.create({
   barTrack: {
     width: '100%',
     height: 8,
-    borderRadius: 4,
-    backgroundColor: '#E5E5E5',
+    borderRadius: radius.sm,
+    backgroundColor: colors.paper,
+    ...border.hairline,
     overflow: 'hidden',
   },
   barFill: {
     width: '100%',
     height: 8,
-    borderRadius: 4,
-    backgroundColor: '#2563EB',
+    borderRadius: radius.sm,
+    backgroundColor: colors.ink,
   },
   barCaption: {
+    ...type.small,
     marginTop: 8,
-    fontSize: 12,
-    color: '#6B6B6B',
+    color: colors.graphite,
     textAlign: 'right',
   },
   appleButton: {
     marginTop: 24,
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000000',
   },
   appleLabel: {
-    fontSize: 16,
+    ...type.body,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.paper,
   },
   googleButton: {
     marginTop: 12,
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    backgroundColor: colors.paper,
+    ...border.rule,
   },
   googleLabel: {
-    fontSize: 16,
+    ...type.body,
     fontWeight: '600',
-    color: '#1A1A1A',
+    color: colors.ink,
   },
   buttonDimmed: {
     opacity: 0.6,
@@ -312,23 +314,22 @@ const styles = StyleSheet.create({
   hairline: {
     flex: 1,
     height: 1,
-    backgroundColor: '#E5E5E5',
+    backgroundColor: colors.paperLine,
   },
   orText: {
-    fontSize: 12,
-    color: '#6B6B6B',
+    ...type.small,
+    color: colors.graphite,
   },
   input: {
+    ...type.body,
     marginTop: 12,
     width: '100%',
     height: 48,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderRadius: radius.sharp,
+    ...border.hairline,
     paddingHorizontal: 16,
-    fontSize: 16,
-    color: '#1A1A1A',
-    backgroundColor: '#FFFFFF',
+    color: colors.ink,
+    backgroundColor: colors.paper,
   },
   inputTight: {
     marginTop: 8,
@@ -337,21 +338,21 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   errorText: {
+    ...type.small,
     marginTop: 12,
-    fontSize: 13,
-    color: '#DC2626',
+    color: colors.errorRed,
   },
   infoText: {
+    ...type.small,
     marginTop: 12,
-    fontSize: 13,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   toggleWrap: {
     marginTop: 12,
     alignItems: 'center',
   },
   toggleText: {
-    fontSize: 13,
-    color: '#2563EB',
+    ...type.small,
+    color: colors.ink,
   },
 });

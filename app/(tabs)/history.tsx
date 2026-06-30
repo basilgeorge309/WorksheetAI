@@ -12,6 +12,8 @@ import {
 } from 'react-native';
 
 import { supabase } from '../../lib/supabase';
+import RuledBackground from '../../components/RuledBackground';
+import { border, colors, radius, spacing, type } from '../../constants/theme';
 
 type WorksheetStatus = 'pending' | 'processing' | 'complete' | 'error';
 
@@ -27,10 +29,10 @@ type Worksheet = {
 };
 
 const BADGE_CONFIG: Record<WorksheetStatus, { label: string; bg: string; text: string }> = {
-  complete: { label: 'Done', bg: '#DCFCE7', text: '#16A34A' },
-  processing: { label: 'Working…', bg: '#DBEAFE', text: '#2563EB' },
-  pending: { label: 'Pending', bg: '#FEF9C3', text: '#CA8A04' },
-  error: { label: 'Failed', bg: '#FEE2E2', text: '#DC2626' },
+  complete: { label: 'Done', bg: colors.successGreenBg, text: colors.successGreen },
+  processing: { label: 'Working…', bg: colors.paper, text: colors.ink },
+  pending: { label: 'Pending', bg: colors.warningAmberBg, text: colors.warningAmber },
+  error: { label: 'Failed', bg: colors.errorRedBg, text: colors.errorRed },
 };
 
 const formatDate = (iso: string) => {
@@ -65,7 +67,7 @@ function SkeletonRow() {
   return (
     <View style={styles.row}>
       <View style={styles.iconWrap}>
-        <Ionicons name="document-outline" size={24} color="#E5E5E5" />
+        <Ionicons name="document-outline" size={24} color={colors.paperLine} />
       </View>
       <View style={styles.rowMiddle}>
         <Animated.View style={[styles.skelTitle, { opacity }]} />
@@ -130,7 +132,7 @@ export default function HistoryScreen() {
         onPress={() => openWorksheet(item)}
         style={styles.row}>
         <View style={styles.iconWrap}>
-          <Ionicons name="document-outline" size={24} color="#6B6B6B" />
+          <Ionicons name="document-outline" size={24} color={colors.graphite} />
         </View>
         <View style={styles.rowMiddle}>
           <Text selectable={false} numberOfLines={1} style={styles.filename}>
@@ -140,7 +142,7 @@ export default function HistoryScreen() {
             {getSubtitle(item)}
           </Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+        <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.text }]}>
           <Text selectable={false} style={[styles.badgeText, { color: badge.text }]}>
             {badge.label}
           </Text>
@@ -159,6 +161,7 @@ export default function HistoryScreen() {
   if (loading && !refreshing) {
     return (
       <View style={styles.container}>
+        <RuledBackground />
         {Title}
         <View style={styles.skeletonList}>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -173,6 +176,7 @@ export default function HistoryScreen() {
   if (error) {
     return (
       <View style={styles.container}>
+        <RuledBackground />
         {Title}
         <View style={styles.centered}>
           <Text selectable={false} style={styles.errorText}>
@@ -195,19 +199,25 @@ export default function HistoryScreen() {
 
   return (
     <View style={styles.container}>
+      <RuledBackground />
       {Title}
       <FlatList
         data={worksheets}
         keyExtractor={(item) => item.id}
         renderItem={renderRow}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
         contentContainerStyle={styles.listContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.ink}
+          />
         }
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Ionicons name="time-outline" size={48} color="#D1D5DB" />
+            <View style={styles.emptyIconCircle}>
+              <Ionicons name="time-outline" size={48} color={colors.graphite} />
+            </View>
             <Text selectable={false} style={styles.emptyTitle}>
               No worksheets yet
             </Text>
@@ -224,13 +234,13 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.paper,
     paddingHorizontal: 24,
+    paddingLeft: 56,
   },
   title: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    ...type.displaySerif,
+    color: colors.ink,
     paddingTop: 16,
     marginBottom: 8,
   },
@@ -241,7 +251,11 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    backgroundColor: colors.paper,
+    borderRadius: radius.sharp,
+    padding: 16,
+    marginBottom: spacing.sm,
+    ...border.hairline,
   },
   iconWrap: {
     width: 32,
@@ -252,27 +266,22 @@ const styles = StyleSheet.create({
     marginHorizontal: 12,
   },
   filename: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    ...type.body,
+    color: colors.ink,
   },
   subtitle: {
     marginTop: 4,
-    fontSize: 13,
-    color: '#6B6B6B',
+    ...type.small,
+    color: colors.graphite,
   },
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: radius.sharp,
+    ...border.hairline,
   },
   badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#E5E5E5',
+    ...type.label,
   },
   skeletonList: {
     marginTop: 4,
@@ -280,21 +289,21 @@ const styles = StyleSheet.create({
   skelTitle: {
     width: 180,
     height: 14,
-    borderRadius: 4,
-    backgroundColor: '#E5E5E5',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paperLine,
   },
   skelSubtitle: {
     marginTop: 8,
     width: 120,
     height: 12,
-    borderRadius: 4,
-    backgroundColor: '#F0F0F0',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paperLine,
   },
   skelBadge: {
     width: 52,
     height: 24,
-    borderRadius: 12,
-    backgroundColor: '#E5E5E5',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paperLine,
   },
   centered: {
     flex: 1,
@@ -302,15 +311,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   errorText: {
-    fontSize: 15,
-    color: '#DC2626',
+    ...type.body,
+    color: colors.errorRed,
     textAlign: 'center',
   },
   tryAgain: {
     marginTop: 12,
-    fontSize: 15,
+    ...type.body,
     fontWeight: '600',
-    color: '#2563EB',
+    color: colors.ink,
   },
   emptyState: {
     flex: 1,
@@ -318,16 +327,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: 80,
   },
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: radius.pill,
+    ...border.dashed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   emptyTitle: {
     marginTop: 12,
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    ...type.bodySerif,
+    color: colors.graphite,
   },
   emptySubtitle: {
     marginTop: 4,
-    fontSize: 14,
-    color: '#6B6B6B',
+    ...type.small,
+    color: colors.graphite,
     textAlign: 'center',
   },
 });

@@ -1,5 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 
+import { colors, radius, type } from '../../constants/theme';
+
 type Props = {
   label: string;
   onPress: () => void;
@@ -21,7 +23,7 @@ export default function OnboardingButton({
       onPress={onPress}
       style={[styles.button, isDisabled && styles.buttonDisabled]}>
       {loading ? (
-        <ActivityIndicator color="#FFFFFF" />
+        <ActivityIndicator color={colors.paper} />
       ) : (
         <Text
           selectable={false}
@@ -37,20 +39,20 @@ const styles = StyleSheet.create({
   button: {
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.ink,
   },
   buttonDisabled: {
-    backgroundColor: '#E5E5E5',
+    backgroundColor: colors.mutedText,
   },
   label: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    ...type.bodySerif,
+    fontSize: 17,
+    color: colors.paper,
   },
   labelDisabled: {
-    color: '#9CA3AF',
+    color: colors.paper,
   },
 });

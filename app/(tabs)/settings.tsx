@@ -14,8 +14,10 @@ import {
 
 import DeleteAccountModal from '../../components/DeleteAccountModal';
 import PaywallModal from '../../components/PaywallModal';
+import RuledBackground from '../../components/RuledBackground';
 import { useAuth } from '../../context/AuthContext';
 import { isProUser, restorePurchases } from '../../lib/revenuecat';
+import { border, colors, radius, type } from '../../constants/theme';
 
 const TERMS_URL = 'https://basilgeorge309.github.io/WorksheetAI/terms.html';
 const PRIVACY_URL = 'https://basilgeorge309.github.io/WorksheetAI/privacy.html';
@@ -65,22 +67,27 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
+      <RuledBackground />
       <Text style={styles.title}>Settings</Text>
 
       {/* Account */}
       <Text style={styles.sectionLabel}>Account</Text>
-      <Text style={styles.email}>
-        {user?.email ?? 'Not signed in'}
-      </Text>
+      <View style={styles.card}>
+        <Text style={styles.email}>
+          {user?.email ?? 'Not signed in'}
+        </Text>
+      </View>
 
       {/* Subscription */}
       <Text style={styles.sectionLabel}>Subscription</Text>
-      <View style={styles.planRow}>
-        <Text style={styles.planText}>Plan</Text>
-        <View style={[styles.badge, isPro ? styles.badgePro : styles.badgeFree]}>
-          <Text style={[styles.badgeText, isPro ? styles.badgeTextPro : styles.badgeTextFree]}>
-            {isPro === null ? '…' : isPro ? 'Pro' : 'Free'}
-          </Text>
+      <View style={styles.card}>
+        <View style={styles.planRow}>
+          <Text style={styles.planText}>Plan</Text>
+          <View style={[styles.badge, isPro ? styles.badgePro : styles.badgeFree]}>
+            <Text style={[styles.badgeText, isPro ? styles.badgeTextPro : styles.badgeTextFree]}>
+              {isPro === null ? '…' : isPro ? 'Pro' : 'Free'}
+            </Text>
+          </View>
         </View>
       </View>
 
@@ -99,7 +106,7 @@ export default function SettingsScreen() {
         onPress={handleRestore}
         style={styles.restoreLink}>
         {restoring ? (
-          <ActivityIndicator color="#6B6B6B" />
+          <ActivityIndicator color={colors.graphite} />
         ) : (
           <Text style={styles.restoreText}>Restore purchases</Text>
         )}
@@ -107,27 +114,29 @@ export default function SettingsScreen() {
 
       {/* Legal */}
       <Text style={styles.sectionLabel}>Legal</Text>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => Linking.openURL(TERMS_URL)}
-        style={styles.legalRow}>
-        <Text style={styles.legalText}>Terms of Service</Text>
-        <Ionicons name="chevron-forward" size={16} color="#6B6B6B" />
-      </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => Linking.openURL(PRIVACY_URL)}
-        style={styles.legalRow}>
-        <Text style={styles.legalText}>Privacy Policy</Text>
-        <Ionicons name="chevron-forward" size={16} color="#6B6B6B" />
-      </TouchableOpacity>
-      <TouchableOpacity
-        activeOpacity={0.7}
-        onPress={() => Linking.openURL(SUPPORT_URL)}
-        style={styles.legalRow}>
-        <Text style={styles.legalText}>Support</Text>
-        <Ionicons name="chevron-forward" size={16} color="#6B6B6B" />
-      </TouchableOpacity>
+      <View style={styles.card}>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL(TERMS_URL)}
+          style={styles.legalRow}>
+          <Text style={styles.legalText}>Terms of Service</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.graphite} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL(PRIVACY_URL)}
+          style={styles.legalRow}>
+          <Text style={styles.legalText}>Privacy Policy</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.graphite} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL(SUPPORT_URL)}
+          style={[styles.legalRow, styles.legalRowLast]}>
+          <Text style={styles.legalText}>Support</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.graphite} />
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.spacer} />
 
@@ -139,7 +148,7 @@ export default function SettingsScreen() {
           onPress={handleSignOut}
           style={[styles.signOutButton, busy && styles.signOutButtonDisabled]}>
           {busy ? (
-            <ActivityIndicator color="#DC2626" />
+            <ActivityIndicator color={colors.alertRed} />
           ) : (
             <Text style={styles.signOutLabel}>Sign out</Text>
           )}
@@ -174,25 +183,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    backgroundColor: '#FFFFFF',
+    paddingLeft: 56,
+    backgroundColor: colors.paper,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    ...type.titleSerif,
+    color: colors.ink,
+  },
+  card: {
+    marginTop: 8,
+    backgroundColor: colors.paper,
+    borderRadius: radius.sharp,
+    paddingHorizontal: 16,
+    ...border.hairline,
   },
   email: {
-    fontSize: 14,
-    color: '#6B6B6B',
+    ...type.body,
+    color: colors.graphite,
     paddingVertical: 12,
   },
   sectionLabel: {
     marginTop: 32,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: '#6B6B6B',
+    ...type.label,
+    color: colors.graphite,
   },
   legalRow: {
     flexDirection: 'row',
@@ -200,70 +213,69 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: colors.paperLine,
+  },
+  legalRowLast: {
+    borderBottomWidth: 0,
   },
   legalText: {
-    fontSize: 15,
-    color: '#1A1A1A',
+    ...type.body,
+    color: colors.ink,
   },
   planRow: {
-    marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
   },
   planText: {
-    fontSize: 15,
-    color: '#1A1A1A',
+    ...type.body,
+    color: colors.ink,
   },
   badge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: radius.sharp,
+    ...border.hairline,
   },
   badgeFree: {
-    borderColor: '#E5E5E5',
-    backgroundColor: '#F3F4F6',
+    borderColor: colors.paperLine,
+    backgroundColor: colors.paper,
   },
   badgePro: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    borderColor: colors.ink,
+    backgroundColor: colors.paper,
   },
   badgeText: {
-    fontSize: 12,
-    fontWeight: '600',
+    ...type.label,
   },
   badgeTextFree: {
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   badgeTextPro: {
-    color: '#2563EB',
+    color: colors.ink,
   },
   upgradeButton: {
     marginTop: 16,
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.ink,
   },
   upgradeLabel: {
-    fontSize: 16,
+    ...type.body,
     fontWeight: '600',
-    color: '#FFFFFF',
+    color: colors.paper,
   },
   restoreLink: {
     marginTop: 16,
     alignItems: 'center',
   },
   restoreText: {
-    fontSize: 13,
-    color: '#6B6B6B',
+    ...type.small,
+    color: colors.graphite,
   },
   spacer: {
     flex: 1,
@@ -273,27 +285,26 @@ const styles = StyleSheet.create({
   },
   errorText: {
     marginBottom: 12,
-    fontSize: 13,
-    color: '#DC2626',
+    ...type.small,
+    color: colors.errorRed,
     textAlign: 'center',
   },
   signOutButton: {
     width: '100%',
     height: 52,
-    borderRadius: 8,
+    borderRadius: radius.sharp,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    ...border.hairline,
+    backgroundColor: colors.paper,
   },
   signOutButtonDisabled: {
     opacity: 0.6,
   },
   signOutLabel: {
-    fontSize: 16,
+    ...type.body,
     fontWeight: '600',
-    color: '#DC2626',
+    color: colors.alertRed,
   },
   deleteRow: {
     marginTop: 8,
@@ -301,8 +312,8 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   deleteText: {
-    fontSize: 15,
-    color: '#DC2626',
+    ...type.body,
+    color: colors.alertRed,
   },
 });
 

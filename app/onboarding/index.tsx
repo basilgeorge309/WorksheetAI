@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { colors } from '../../constants/theme';
+import RuledBackground from '../../components/RuledBackground';
 import ProgressDots from '../../components/onboarding/ProgressDots';
 import StepBehind from '../../components/onboarding/StepBehind';
 import StepFreetier from '../../components/onboarding/StepFreetier';
@@ -116,6 +118,7 @@ export default function OnboardingShell() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+      <RuledBackground />
       {currentStep > 0 && (
         <View style={styles.header}>
           <Pressable
@@ -123,7 +126,7 @@ export default function OnboardingShell() {
             accessibilityLabel="Go back"
             onPress={goBack}
             style={styles.backButton}>
-            <Ionicons name="chevron-back" size={24} color="#6B6B6B" />
+            <Ionicons name="chevron-back" size={24} color={colors.ink} />
           </Pressable>
           <View style={styles.dotsWrap}>
             {/* Dots represent the 4 steps after the hook (steps 1–4). */}
@@ -144,7 +147,7 @@ export default function OnboardingShell() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.paper,
   },
   header: {
     height: 48,

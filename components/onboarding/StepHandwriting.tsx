@@ -1,5 +1,6 @@
-import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { border, colors, radius, type } from '../../constants/theme';
 import OnboardingButton from './OnboardingButton';
 
 type Props = {
@@ -56,19 +57,19 @@ export default function StepHandwriting({ onNext, onAnswer, currentStyle }: Prop
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingLeft: 56,
+    paddingRight: 24,
     paddingTop: 8,
     paddingBottom: 24,
   },
   header: {
-    fontSize: 24,
-    fontWeight: '600',
-    color: '#1A1A1A',
+    ...type.displaySerif,
+    color: colors.ink,
   },
   subheader: {
+    ...type.small,
     marginTop: 8,
-    fontSize: 14,
-    color: '#6B6B6B',
+    color: colors.graphite,
   },
   cards: {
     marginTop: 24,
@@ -77,38 +78,35 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     padding: 20,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paper,
+    ...border.hairline,
   },
   cardSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+    ...border.rule,
   },
   styleName: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6B6B6B',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+    ...type.label,
+    color: colors.graphite,
   },
   sample: {
     marginTop: 12,
-    color: '#1A1A1A',
+    color: colors.ink,
   },
-  // neat -> monospace
+  // neat -> serif regular (upright)
   sampleNeat: {
-    fontFamily: Platform.select({ ios: 'Courier New', default: 'monospace' }),
+    fontFamily: type.bodySerif.fontFamily,
     fontSize: 18,
   },
-  // average -> system italic
+  // average -> serif italic
   sampleAverage: {
+    fontFamily: type.bodySerif.fontFamily,
     fontStyle: 'italic',
     fontSize: 18,
   },
-  // messy -> system italic, tighter tracking
+  // messy -> serif italic, tighter tracking
   sampleMessy: {
+    fontFamily: type.bodySerif.fontFamily,
     fontStyle: 'italic',
     fontSize: 18,
     letterSpacing: -0.5,

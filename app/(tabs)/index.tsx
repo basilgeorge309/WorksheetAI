@@ -14,6 +14,8 @@ import {
 
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
 import PaywallModal from '../../components/PaywallModal';
+import RuledBackground from '../../components/RuledBackground';
+import { border, colors, radius, spacing, type } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
 import { sendLocalNotification } from '../../lib/notifications';
 import {
@@ -75,6 +77,13 @@ export default function HomeScreen() {
   useFocusEffect(refreshUsage);
 
   const remaining = usage ? Math.max(0, usage.limit - usage.used) : null;
+  // Usage text: green when worksheets remain, red when out, neutral while loading.
+  const usageColor =
+    usage === null
+      ? colors.graphite
+      : !usage.isPro && remaining === 0
+        ? colors.alertRed
+        : colors.successGreen;
 
   const clearSelection = () => {
     setSource(null);
@@ -201,115 +210,126 @@ export default function HomeScreen() {
   const fillDisabled = !fileUri || loading;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Text style={styles.appName}>Scribbl</Text>
-      <Text style={styles.usageText}>
-        {usage === null
-          ? 'Checking your free worksheets…'
-          : usage.isPro
-            ? 'Pro — Unlimited'
-            : `${remaining} of ${usage.limit} remaining this month`}
-      </Text>
+    <View style={styles.root}>
+      <RuledBackground />
+      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+        <Text style={styles.appName}>Scribbl</Text>
+        <Text style={[styles.usageText, { color: usageColor }]}>
+          {usage === null
+            ? 'Checking your free worksheets…'
+            : usage.isPro
+              ? 'Pro — Unlimited'
+              : `${remaining} of ${usage.limit} remaining this month`}
+        </Text>
 
-      {/* Source picker */}
-      <Text style={styles.sectionLabel}>Add a worksheet</Text>
-      <View style={styles.chipRow}>
-        {SOURCE_CHIPS.map((chip) => {
-          const selected = source === chip.value;
-          return (
-            <Pressable
-              key={chip.value}
-              disabled={loading}
-              onPress={() => onSourcePress(chip.value)}
-              style={[styles.sourceChip, selected && styles.chipSelected]}>
-              <Ionicons
-                name={chip.icon}
-                size={18}
-                color={selected ? '#2563EB' : '#6B6B6B'}
-              />
-              <Text style={[styles.sourceChipText, selected && styles.chipTextSelected]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* Selected file / photo preview */}
-      {fileUri && (
-        <View style={styles.previewCard}>
-          {fileType === 'image' && thumbnail ? (
-            <Image source={{ uri: thumbnail }} style={styles.thumbnail} />
-          ) : (
-            <Ionicons name="document-text-outline" size={32} color="#1A1A1A" />
-          )}
-          <Text style={styles.fileName} numberOfLines={1}>
-            {fileName}
-          </Text>
-          <Pressable disabled={loading} onPress={clearSelection}>
-            <Text style={styles.changeLink}>Change</Text>
-          </Pressable>
+        {/* Source picker */}
+        <Text style={styles.sectionLabel}>Add a worksheet</Text>
+        <View style={styles.chipRow}>
+          {SOURCE_CHIPS.map((chip) => {
+            const selected = source === chip.value;
+            return (
+              <Pressable
+                key={chip.value}
+                disabled={loading}
+                onPress={() => onSourcePress(chip.value)}
+                style={[styles.sourceChip, selected && styles.sourceChipSelected]}>
+                <Ionicons
+                  name={chip.icon}
+                  size={18}
+                  color={selected ? colors.paper : colors.ink}
+                />
+                <Text style={[styles.sourceChipText, selected && styles.sourceChipTextSelected]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
-      )}
 
-      {/* Handwriting style */}
-      <Text style={styles.sectionLabel}>Handwriting style</Text>
-      <View style={styles.chipRow}>
-        {STYLE_CHIPS.map((chip) => {
-          const selected = chip.value === style;
-          return (
-            <Pressable
-              key={chip.value}
-              disabled={loading}
-              onPress={() => setStyle(chip.value)}
-              style={[styles.chip, selected && styles.chipSelected]}>
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                {chip.label}
-              </Text>
+        {/* Selected file / photo preview */}
+        {fileUri && (
+          <View style={styles.previewCard}>
+            {fileType === 'image' && thumbnail ? (
+              <Image source={{ uri: thumbnail }} style={styles.thumbnail} />
+            ) : (
+              <Ionicons name="document-text-outline" size={28} color={colors.ink} />
+            )}
+            <Text style={styles.fileName} numberOfLines={1}>
+              {fileName}
+            </Text>
+            <Pressable disabled={loading} onPress={clearSelection}>
+              <Text style={styles.changeLink}>Change</Text>
             </Pressable>
-          );
-        })}
-      </View>
+          </View>
+        )}
 
-      {/* Difficulty */}
-      <Text style={styles.sectionLabel}>Difficulty</Text>
-      <View style={styles.chipRow}>
-        {DIFFICULTY_CHIPS.map((chip) => {
-          const selected = chip.value === difficulty;
-          return (
-            <Pressable
-              key={chip.value}
-              disabled={loading}
-              onPress={() => setDifficulty(chip.value)}
-              style={[styles.chip, selected && styles.chipSelected]}>
-              <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
-                {chip.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+        {/* Handwriting style — segmented control */}
+        <Text style={styles.sectionLabel}>Handwriting style</Text>
+        <View style={styles.segmented}>
+          {STYLE_CHIPS.map((chip, i) => {
+            const selected = chip.value === style;
+            return (
+              <Pressable
+                key={chip.value}
+                disabled={loading}
+                onPress={() => setStyle(chip.value)}
+                style={[
+                  styles.segment,
+                  i < STYLE_CHIPS.length - 1 && styles.segmentDivider,
+                  selected && styles.segmentSelected,
+                ]}>
+                <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
-      {error && <Text style={styles.errorText}>{error}</Text>}
+        {/* Difficulty — segmented control */}
+        <Text style={styles.sectionLabel}>Difficulty</Text>
+        <View style={styles.segmented}>
+          {DIFFICULTY_CHIPS.map((chip, i) => {
+            const selected = chip.value === difficulty;
+            return (
+              <Pressable
+                key={chip.value}
+                disabled={loading}
+                onPress={() => setDifficulty(chip.value)}
+                style={[
+                  styles.segment,
+                  i < DIFFICULTY_CHIPS.length - 1 && styles.segmentDivider,
+                  selected && styles.segmentSelected,
+                ]}>
+                <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>
+                  {chip.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
 
-      <View style={styles.fillBlock}>
-        <OnboardingButton
-          label="Fill it in →"
-          onPress={handleFill}
-          disabled={fillDisabled}
-          loading={loading}
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
+        <View style={styles.fillBlock}>
+          <OnboardingButton
+            label="Fill it in →"
+            onPress={handleFill}
+            disabled={fillDisabled}
+            loading={loading}
+          />
+        </View>
+
+        <PaywallModal
+          visible={paywallVisible}
+          onClose={() => setPaywallVisible(false)}
+          onSuccess={() => {
+            setPaywallVisible(false);
+            refreshUsage();
+          }}
         />
-      </View>
-
-      <PaywallModal
-        visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
-        onSuccess={() => {
-          setPaywallVisible(false);
-          refreshUsage();
-        }}
-      />
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -320,23 +340,26 @@ function subjectFor(_style: Style): string {
 }
 
 const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: colors.paper,
+  },
   screen: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
   },
   content: {
-    padding: 24,
-    paddingTop: 32,
+    paddingRight: spacing.xxl,
+    paddingLeft: 56,
+    paddingTop: spacing.xxxl,
+    paddingBottom: spacing.xxl,
   },
   appName: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#1A1A1A',
+    ...type.displaySerif,
+    color: colors.ink,
   },
   usageText: {
-    marginTop: 4,
-    fontSize: 13,
-    color: '#6B6B6B',
+    ...type.label,
+    marginTop: spacing.sm,
   },
   sourceChip: {
     flex: 1,
@@ -345,84 +368,91 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     height: 48,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paper,
+    ...border.hairline,
+  },
+  sourceChipSelected: {
+    backgroundColor: colors.ink,
+    ...border.rule,
   },
   sourceChipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+    ...type.body,
+    color: colors.ink,
+  },
+  sourceChipTextSelected: {
+    color: colors.paper,
   },
   previewCard: {
-    marginTop: 16,
+    marginTop: spacing.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.sharp,
+    backgroundColor: colors.paper,
+    ...border.dashed,
   },
   thumbnail: {
     width: 60,
     height: 60,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
+    borderRadius: radius.sharp,
+    ...border.hairline,
   },
   fileName: {
     flex: 1,
-    fontSize: 15,
-    color: '#1A1A1A',
+    ...type.bodySerif,
+    color: colors.ink,
   },
   changeLink: {
-    fontSize: 14,
+    ...type.body,
     fontWeight: '600',
-    color: '#2563EB',
+    color: colors.ink,
   },
   sectionLabel: {
-    marginTop: 28,
-    fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    color: '#6B6B6B',
+    ...type.label,
+    marginTop: spacing.xxl,
+    color: colors.graphite,
   },
   chipRow: {
-    marginTop: 12,
+    marginTop: spacing.md,
     flexDirection: 'row',
-    gap: 10,
+    gap: spacing.md,
   },
-  chip: {
+  segmented: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    borderRadius: radius.sharp,
+    overflow: 'hidden',
+    ...border.rule,
+  },
+  segment: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    paddingVertical: spacing.md,
+    backgroundColor: 'transparent',
   },
-  chipSelected: {
-    borderColor: '#2563EB',
-    backgroundColor: '#EFF6FF',
+  segmentDivider: {
+    borderRightWidth: 1.5,
+    borderRightColor: colors.ink,
   },
-  chipText: {
+  segmentSelected: {
+    backgroundColor: colors.ink,
+  },
+  segmentText: {
+    ...type.bodySerif,
     fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
+    color: colors.ink,
   },
-  chipTextSelected: {
-    color: '#2563EB',
+  segmentTextSelected: {
+    color: colors.paper,
   },
   errorText: {
-    marginTop: 20,
-    fontSize: 13,
-    color: '#DC2626',
+    ...type.small,
+    marginTop: spacing.xl,
+    color: colors.errorRed,
   },
   fillBlock: {
-    marginTop: 28,
+    marginTop: spacing.xxl,
   },
 });
