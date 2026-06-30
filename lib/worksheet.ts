@@ -11,6 +11,10 @@ const FREE_LIMIT = 3;
 export type FileType = 'pdf' | 'image';
 const POLL_INTERVAL_MS = 2000;
 const POLL_TIMEOUT_MS = 30000;
+const UPLOAD_TIMEOUT_MS = 30000;
+
+// Sentinel so an upload that hangs past the timeout never blocks indefinitely.
+const UPLOAD_TIMED_OUT = Symbol('upload-timed-out');
 
 export type UploadResult =
   | { worksheetId: string; storagePath: string }
@@ -65,11 +69,16 @@ export async function uploadWorksheet(
     const bytes = decode(base64);
 
     const storagePath = `uploads/${userId}/${Date.now()}.${ext}`;
-    const { error: uploadError } = await supabase.storage
-      .from('worksheets')
-      .upload(storagePath, bytes, { contentType: mimeType });
-    if (uploadError) {
-      return { error: uploadError.message };
+    // 1.1 — never let a stalled connection hang the upload forever.
+    const raced = await Promise.race([
+      supabase.storage.from('worksheets').upload(storagePath, bytes, { contentType: mimeType }),
+      sleep(UPLOAD_TIMEOUT_MS).then(() => UPLOAD_TIMED_OUT),
+    ]);
+    if (typeof raced === 'symbol') {
+      return { error: 'Upload timed out. Check your connection and try again.' };
+    }
+    if (raced.error) {
+      return { error: raced.error.message };
     }
 
     const { data, error: insertError } = await supabase
@@ -99,11 +108,18 @@ export async function fillWorksheet(
   subject: string
 ): Promise<FillResult> {
   try {
-    // Forward the user's access token so the edge function can verify identity
-    // + ownership (it rejects calls without a valid JWT).
+    // 3.2 — session must be valid (and not expired) before we proceed; the edge
+    // function requires the JWT, and the user can't proceed without re-auth.
     const {
       data: { session },
+      error: sessionError,
     } = await supabase.auth.getSession();
+    if (sessionError || !session) {
+      return { error: 'Your session expired. Please sign in again.' };
+    }
+
+    // Forward the user's access token so the edge function can verify identity
+    // + ownership (it rejects calls without a valid JWT).
     const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
       'fill-worksheet',
       {
@@ -125,26 +141,41 @@ export async function fillWorksheet(
     }
 
     // Fallback: poll the row in case the function is still finishing.
+    // 1.2 — a network error during polling does NOT retry forever: we keep
+    // looping only until the 30s ceiling, then return a clear lost-connection
+    // message instead of a raw error or a false "timed out".
     const deadline = Date.now() + POLL_TIMEOUT_MS;
+    let sawNetworkError = false;
     while (Date.now() < deadline) {
-      const { data, error } = await supabase
-        .from('worksheets')
-        .select('status, output_path, error')
-        .eq('id', worksheetId)
-        .single();
-      if (error) {
-        return { error: error.message };
-      }
-      if (data.status === 'complete' && data.output_path) {
-        return { outputPath: data.output_path as string };
-      }
-      if (data.status === 'error') {
-        return { error: (data.error as string) ?? 'Worksheet processing failed.' };
+      try {
+        const { data, error } = await supabase
+          .from('worksheets')
+          .select('status, output_path, error')
+          .eq('id', worksheetId)
+          .single();
+        if (error) {
+          sawNetworkError = true; // treat read failure as a transient blip
+        } else {
+          sawNetworkError = false;
+          if (data.status === 'complete' && data.output_path) {
+            return { outputPath: data.output_path as string };
+          }
+          if (data.status === 'error') {
+            return { error: (data.error as string) ?? 'Worksheet processing failed.' };
+          }
+        }
+      } catch {
+        sawNetworkError = true;
       }
       await sleep(POLL_INTERVAL_MS);
     }
 
-    // If invoke itself errored and we never settled, surface that.
+    // Ceiling reached.
+    if (sawNetworkError) {
+      return {
+        error: 'Lost connection while processing. Check History to see if it finished.',
+      };
+    }
     if (invokeError) {
       return { error: invokeError.message };
     }
@@ -161,9 +192,15 @@ export async function fillWorksheet(
 export async function checkUsage(userId: string): Promise<UsageInfo> {
   // Pro is checked client-side via RevenueCat (no isPro DB column). Pro users
   // are unlimited regardless of the monthly counter.
-  const pro = await isProUser();
-  if (pro) {
-    return { used: 0, limit: Infinity, canUse: true, isPro: true };
+  // 4.1 — fail OPEN if RevenueCat is unreachable: don't block a paying user on a
+  // transient error; fall through to the DB free-tier check (still usable).
+  try {
+    const pro = await isProUser();
+    if (pro) {
+      return { used: 0, limit: Infinity, canUse: true, isPro: true };
+    }
+  } catch (e) {
+    console.error('RevenueCat check failed, failing open to DB free-tier check:', e);
   }
   try {
     const { data, error } = await supabase

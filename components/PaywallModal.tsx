@@ -63,7 +63,7 @@ export default function PaywallModal({ visible, onClose, onSuccess }: Props) {
       onSuccess();
       return;
     }
-    setError('Could not restore purchases.');
+    setError(res.error ?? 'Could not restore purchases.');
   };
 
   return (

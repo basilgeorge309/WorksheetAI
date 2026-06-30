@@ -181,6 +181,12 @@ export async function getCurrentUser(): Promise<AuthResult> {
  * Permanently delete the signed-in user's account via the `delete-account` edge
  * function (which needs the service role to remove the auth user + storage), then
  * sign out locally. Returns `{ success, error? }`; never throws.
+ *
+ * 3.1 — Re-signup after deletion: the edge function calls
+ * `adminClient.auth.admin.deleteUser(user.id)`, which removes the row from
+ * `auth.users` entirely. Supabase frees the email immediately, so the same email
+ * can sign up again right away as a brand-new account (no cooldown, no orphaned
+ * row — `profiles/worksheets/usage` cascade-delete via FK). No extra code needed.
  */
 export async function deleteAccount(): Promise<{ success: boolean; error?: string }> {
   try {

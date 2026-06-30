@@ -58,9 +58,12 @@ export default function SettingsScreen() {
   };
 
   const handleRestore = async () => {
+    setError(null);
     setRestoring(true);
-    await restorePurchases();
+    const res = await restorePurchases();
     setRestoring(false);
+    // 4.3 — surface a clear message instead of silently doing nothing.
+    if (!res.success && res.error) setError(res.error);
     refreshPro();
   };
 
@@ -159,6 +162,14 @@ export default function SettingsScreen() {
           style={styles.deleteRow}>
           <Text style={styles.deleteText}>Delete Account</Text>
         </TouchableOpacity>
+
+        {__DEV__ && (
+          <TouchableOpacity
+            onPress={() => router.push('/onboarding?devStep=3')}
+            style={styles.devRow}>
+            <Text style={styles.devRowText}>Preview onboarding (dev)</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <PaywallModal
@@ -315,6 +326,16 @@ const styles = StyleSheet.create({
   deleteText: {
     ...type.body,
     color: colors.alertRed,
+  },
+  // DEV-ONLY (gated by __DEV__ in the JSX) — never shipped.
+  devRow: {
+    marginTop: 16,
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  devRowText: {
+    fontSize: 11,
+    color: colors.mutedText,
   },
 });
 

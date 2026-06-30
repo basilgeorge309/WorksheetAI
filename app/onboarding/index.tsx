@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { Animated, BackHandler, Pressable, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +23,14 @@ type Answers = {
 
 export default function OnboardingShell() {
   const router = useRouter();
-  const [currentStep, setCurrentStep] = useState(0);
+  // DEV-ONLY: jump straight to a step for screenshots via ?devStep=N. Ignored in
+  // production (the `__DEV__` guard compiles to a plain 0 there).
+  const { devStep } = useLocalSearchParams<{ devStep?: string }>();
+  const initialStep =
+    __DEV__ && devStep
+      ? Math.min(Math.max(parseInt(devStep, 10) || 0, 0), TOTAL_STEPS - 1)
+      : 0;
+  const [currentStep, setCurrentStep] = useState(initialStep);
   const [answers, setAnswers] = useState<Answers>({
     subject: null,
     behind: null,

@@ -44,10 +44,40 @@ export default function WorksheetDetailScreen() {
 
   // Celebration animations (fire once when the completed worksheet first shows).
   const [confettiOn, setConfettiOn] = useState(false);
+  const [confettiKey, setConfettiKey] = useState(0); // remount Confetti to replay
   const scaleAnim = useRef(new Animated.Value(0)).current;
   const titleAnim = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(0)).current;
   const celebratedRef = useRef(false);
+
+  // DEV-ONLY: re-run the full celebration for clean App Store screenshots. The
+  // real celebration fires once per completion; remounting Confetti (via key) +
+  // resetting the anim values replays it. Never present in production (__DEV__).
+  const replayCelebration = () => {
+    scaleAnim.setValue(0);
+    titleAnim.setValue(0);
+    contentAnim.setValue(0);
+    setConfettiOn(true);
+    setConfettiKey((k) => k + 1);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 5,
+      tension: 80,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(titleAnim, {
+      toValue: 1,
+      duration: 250,
+      delay: 300,
+      useNativeDriver: true,
+    }).start();
+    Animated.timing(contentAnim, {
+      toValue: 1,
+      duration: 200,
+      delay: 500,
+      useNativeDriver: true,
+    }).start();
+  };
 
   useEffect(() => {
     if (showProcessing || celebratedRef.current) return;
@@ -180,17 +210,33 @@ export default function WorksheetDetailScreen() {
   }
 
   // Prefer real row data; fall back to the route's style param, then generic.
+  // 2.2 — only the first 30 answers are rendered; reflect that when total > 30.
+  const RENDER_CAP = 30;
   const subtitleStyle = meta.style ?? styleParam;
+  const answeredText =
+    meta.count != null
+      ? meta.count > RENDER_CAP
+        ? `${RENDER_CAP} of ${meta.count} questions answered`
+        : `${meta.count} questions answered`
+      : null;
   const subtitle =
-    meta.count != null && subtitleStyle
-      ? `${meta.count} questions answered, ${subtitleStyle}-style`
+    answeredText && subtitleStyle
+      ? `${answeredText}, ${subtitleStyle}-style`
       : subtitleStyle
         ? `Answers filled in, ${subtitleStyle}-style.`
         : 'Your answers are filled in.';
 
   return (
     <View style={styles.container}>
-      <Confetti trigger={confettiOn} />
+      <Confetti key={confettiKey} trigger={confettiOn} />
+
+      {__DEV__ && (
+        <Pressable onPress={replayCelebration} style={styles.devReplay}>
+          <Text selectable={false} style={styles.devReplayText}>
+            Replay confetti (dev)
+          </Text>
+        </Pressable>
+      )}
 
       {/* Back is provided by the native header's bordered button. */}
 
@@ -280,6 +326,18 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xl,
     borderLeftWidth: 2,
     borderLeftColor: colors.marginRed,
+  },
+  // DEV-ONLY (gated by __DEV__ in the JSX) — never shipped.
+  devReplay: {
+    position: 'absolute',
+    top: 8,
+    right: 10,
+    padding: 8,
+    zIndex: 10,
+  },
+  devReplayText: {
+    fontSize: 10,
+    color: colors.alertRed,
   },
   processingContainer: {
     alignItems: 'center',

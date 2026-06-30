@@ -75,7 +75,10 @@ function RootLayoutNav() {
 
     if (!session && !inOnboarding) {
       router.replace('/onboarding');
-    } else if (session && inOnboarding) {
+    } else if (session && inOnboarding && !__DEV__) {
+      // In dev, allow a signed-in user to stay on /onboarding for the screenshot
+      // preview (Settings → "Preview onboarding"). In production this bounce
+      // still applies so a logged-in user is never stranded on onboarding.
       router.replace('/(tabs)');
     }
   }, [session, loading, segments, router]);

@@ -31,6 +31,11 @@ export const initRevenueCat = async (): Promise<void> => {
   }
 };
 
+// 4.2 — getCustomerInfo() queries RevenueCat (which syncs with the App/Play
+// Store), so subscriptions cancelled OUTSIDE the app (in iOS/Android settings)
+// are reflected here on the next check — it's not a stale local flag. isProUser()
+// always calls it fresh, so an external cancellation is detected next time usage
+// is checked (e.g. on Home focus).
 export const getCustomerInfo = async (): Promise<any | null> => {
   const P = await loadPurchases();
   if (!P) return null;
@@ -67,13 +72,20 @@ export const purchasePro = async (): Promise<{ success: boolean; error?: string 
   }
 };
 
-export const restorePurchases = async (): Promise<{ success: boolean }> => {
+const RESTORE_FAIL_MESSAGE =
+  'No previous purchases found, or restore failed. Try again or contact support.';
+
+export const restorePurchases = async (): Promise<{ success: boolean; error?: string }> => {
   const P = await loadPurchases();
-  if (!P) return { success: false };
+  if (!P) return { success: false, error: RESTORE_FAIL_MESSAGE };
   try {
-    await P.restorePurchases();
+    const info = await P.restorePurchases();
+    // A "successful" restore that finds no active entitlement isn't a real
+    // restore — surface that rather than silently implying success.
+    const hasActive = (info?.activeSubscriptions?.length ?? 0) > 0;
+    if (!hasActive) return { success: false, error: RESTORE_FAIL_MESSAGE };
     return { success: true };
   } catch {
-    return { success: false };
+    return { success: false, error: RESTORE_FAIL_MESSAGE };
   }
 };

@@ -327,8 +327,25 @@ Deno.serve(async (req: Request) => {
     console.log('Raw response preview:', rawText.slice(0, 200));
     const answers = parseAnswers(rawText);
 
+    // 2.1 — no questions found (blank/unreadable/non-worksheet content): mark the
+    // row as an error with a helpful message rather than producing an empty PDF.
+    if (!answers || answers.length === 0) {
+      const message =
+        "Couldn't find any questions on this worksheet. Try a clearer photo or a different file.";
+      await supabase
+        .from('worksheets')
+        .update({ status: 'error', error: message })
+        .eq('id', worksheetId);
+      return json({ success: false, error: message }, 422);
+    }
+
+    // 2.2 — cap rendering at 30 answers (positioning overlaps beyond that). We
+    // still record the TRUE count in answer_count so the UI can say "30 of N".
+    const totalAnswers = answers.length;
+    const drawAnswers = answers.slice(0, 30);
+
     // 6. Write answers onto the PDF (pdfDoc was loaded above for the dimensions).
-    console.log('PDF loaded, answers to draw:', answers.length);
+    console.log('answers found:', totalAnswers, '— drawing:', drawAnswers.length);
 
     // Bulletproof font section: the ENTIRE thing (registerFontkit + fetch +
     // embed) is guarded, so ANY failure falls back to Helvetica and we still
@@ -374,13 +391,13 @@ Deno.serve(async (req: Request) => {
     // Position each answer: column comes from the question index (x_percent from
     // Claude is unreliable), y_percent gives the vertical position, and
     // available_height_percent (clamped) decides how many lines fit.
-    answers.forEach((item, i) => {
+    drawAnswers.forEach((item, i) => {
       const text = String(item.answer ?? '');
 
       const yPercent =
         typeof item.y_percent === 'number'
           ? item.y_percent
-          : ((i + 1) / (answers.length + 1)) * 100;
+          : ((i + 1) / (drawAnswers.length + 1)) * 100;
 
       // x_percent from Claude is unreliable — derive the column from the question
       // index instead: 1-7 left, 8-12 right.
@@ -433,7 +450,7 @@ Deno.serve(async (req: Request) => {
       .update({
         status: 'complete',
         output_path: outputPath,
-        answer_count: answers.length,
+        answer_count: totalAnswers,
         handwriting_style: style ?? null,
       })
       .eq('id', worksheetId);

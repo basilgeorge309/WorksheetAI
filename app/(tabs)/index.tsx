@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import {
   Image,
   Pressable,
@@ -16,6 +16,7 @@ import OnboardingButton from '../../components/onboarding/OnboardingButton';
 import PaywallModal from '../../components/PaywallModal';
 import { border, colors, radius, spacing, type } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
+import { isConnected } from '../../lib/network';
 import { sendLocalNotification } from '../../lib/notifications';
 import {
   checkUsage,
@@ -23,6 +24,8 @@ import {
   FileType,
   uploadWorksheet,
 } from '../../lib/worksheet';
+
+const SESSION_EXPIRED_MSG = 'Your session expired. Please sign in again.';
 
 type Style = 'neat' | 'average' | 'messy';
 type Difficulty = 'perfect' | 'realistic' | 'student';
@@ -47,8 +50,11 @@ const SOURCE_CHIPS: { value: Source; label: string; icon: keyof typeof Ionicons.
 ];
 
 export default function HomeScreen() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const router = useRouter();
+  // 2.4 — synchronous single-flight lock: blocks rapid double-taps before any
+  // async work runs (the `loading` state is set too late to stop a double-tap).
+  const submittingRef = useRef(false);
 
   const [source, setSource] = useState<Source | null>(null);
   const [fileType, setFileType] = useState<FileType | null>(null);
@@ -159,50 +165,72 @@ export default function HomeScreen() {
 
   const handleFill = async () => {
     if (!user || !fileUri || !fileType) return;
-    setError(null);
+    if (submittingRef.current) return; // 2.4 — ignore extra taps while in flight
+    submittingRef.current = true;
+    try {
+      setError(null);
 
-    // 1. Usage gate — before any upload, so a blocked user doesn't burn a slot.
-    const usageNow = await checkUsage(user.id);
-    setUsage({ used: usageNow.used, limit: usageNow.limit, isPro: usageNow.isPro });
-    if (!usageNow.canUse) {
-      setPaywallVisible(true);
-      return;
-    }
+      // 1.3 — fail fast if offline, before burning a usage slot or hanging.
+      if (!(await isConnected())) {
+        setError('No internet connection. Connect and try again.');
+        return;
+      }
 
-    setLoading(true);
+      // 1. Usage gate — before any upload, so a blocked user doesn't burn a slot.
+      const usageNow = await checkUsage(user.id);
+      setUsage({ used: usageNow.used, limit: usageNow.limit, isPro: usageNow.isPro });
+      if (!usageNow.canUse) {
+        setPaywallVisible(true);
+        return;
+      }
 
-    // 3. Upload (PDF or image).
-    const uploaded = await uploadWorksheet(fileUri, user.id, fileType);
-    if ('error' in uploaded) {
-      setError(uploaded.error);
+      setLoading(true);
+
+      // 3. Upload (PDF or image).
+      const uploaded = await uploadWorksheet(fileUri, user.id, fileType);
+      if ('error' in uploaded) {
+        setError(uploaded.error);
+        setLoading(false);
+        return;
+      }
+
+      // 4. Fill. (Usage is counted server-side by the edge function.)
+      // 5.1 NOTE: if the app is backgrounded during fillWorksheet(), iOS may
+      // suspend the network request after ~30s; the row stays 'processing' in the
+      // DB. The History "Stalled" badge + retry (session 15) recovers that case —
+      // no extra handling needed here.
+      const filled = await fillWorksheet(
+        uploaded.worksheetId,
+        uploaded.storagePath,
+        style,
+        difficulty,
+        subjectFor(style)
+      );
+      if ('error' in filled) {
+        setLoading(false);
+        // 3.2 — expired session: the user can't proceed without re-auth, so route
+        // them to the auth flow instead of showing dead-end inline text.
+        if (filled.error === SESSION_EXPIRED_MSG) {
+          await signOut();
+          router.replace('/onboarding');
+          return;
+        }
+        setError(filled.error);
+        return;
+      }
+
+      // 6. Notify, then navigate (never while loading is true).
+      await sendLocalNotification(
+        'Worksheet ready! 📝',
+        'Your filled worksheet is ready to view.'
+      );
       setLoading(false);
-      return;
+      router.push(
+        `/worksheet/${uploaded.worksheetId}?outputPath=${encodeURIComponent(filled.outputPath)}`
+      );
+    } finally {
+      submittingRef.current = false;
     }
-
-    // 4. Fill. (Usage is counted server-side by the edge function — the client
-    // can no longer write the usage table.)
-    const filled = await fillWorksheet(
-      uploaded.worksheetId,
-      uploaded.storagePath,
-      style,
-      difficulty,
-      subjectFor(style)
-    );
-    if ('error' in filled) {
-      setError(filled.error);
-      setLoading(false);
-      return;
-    }
-
-    // 6. Notify, then navigate (never while loading is true).
-    await sendLocalNotification(
-      'Worksheet ready! 📝',
-      'Your filled worksheet is ready to view.'
-    );
-    setLoading(false);
-    router.push(
-      `/worksheet/${uploaded.worksheetId}?outputPath=${encodeURIComponent(filled.outputPath)}`
-    );
   };
 
   // Stay tappable when out of usage so the tap can open the paywall.
