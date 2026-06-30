@@ -15,6 +15,7 @@ import {
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
 import PaywallModal from '../../components/PaywallModal';
 import { useAuth } from '../../context/AuthContext';
+import { sendLocalNotification } from '../../lib/notifications';
 import {
   checkUsage,
   fillWorksheet,
@@ -185,7 +186,11 @@ export default function HomeScreen() {
       return;
     }
 
-    // 6. Done — then navigate (never while loading is true).
+    // 6. Notify, then navigate (never while loading is true).
+    await sendLocalNotification(
+      'Worksheet ready! 📝',
+      'Your filled worksheet is ready to view.'
+    );
     setLoading(false);
     router.push(
       `/worksheet/${uploaded.worksheetId}?outputPath=${encodeURIComponent(filled.outputPath)}`

@@ -176,3 +176,32 @@ export async function getCurrentUser(): Promise<AuthResult> {
     return { data: null, error: normalizeError(error) };
   }
 }
+
+/**
+ * Permanently delete the signed-in user's account via the `delete-account` edge
+ * function (which needs the service role to remove the auth user + storage), then
+ * sign out locally. Returns `{ success, error? }`; never throws.
+ */
+export async function deleteAccount(): Promise<{ success: boolean; error?: string }> {
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return { success: false, error: 'Not signed in' };
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const { error } = await supabase.functions.invoke('delete-account', {
+      headers: session?.access_token
+        ? { Authorization: `Bearer ${session.access_token}` }
+        : undefined,
+    });
+    if (error) return { success: false, error: error.message };
+
+    await supabase.auth.signOut();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: normalizeError(e).message };
+  }
+}

@@ -67,6 +67,13 @@
         {
           "photosPermission": "Scribbl needs photo library access to upload your worksheets."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#2563EB"
+        }
       ]
     ],
     "experiments": {

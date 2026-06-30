@@ -12,6 +12,10 @@ import { useColorScheme } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import {
+  registerForPushNotifications,
+  savePushToken,
+} from '../lib/notifications';
 import { initRevenueCat } from '../lib/revenuecat';
 
 export {
@@ -44,6 +48,16 @@ function RootLayoutNav() {
   useEffect(() => {
     initRevenueCat();
   }, []);
+
+  // Once a user is signed in, register for push and save the token (best-effort;
+  // no-ops gracefully in Expo Go / simulators).
+  const userId = session?.user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    registerForPushNotifications().then((token) => {
+      if (token) savePushToken(userId, token);
+    });
+  }, [userId]);
 
   // Hide the splash screen once we know whether there is a session.
   useEffect(() => {

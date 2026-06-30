@@ -12,10 +12,12 @@ import {
   View,
 } from 'react-native';
 
+import DeleteAccountModal from '../../components/DeleteAccountModal';
 import PaywallModal from '../../components/PaywallModal';
 import { useAuth } from '../../context/AuthContext';
 import { isProUser, restorePurchases } from '../../lib/revenuecat';
 
+const TERMS_URL = 'https://basilgeorge309.github.io/WorksheetAI/terms.html';
 const PRIVACY_URL = 'https://basilgeorge309.github.io/WorksheetAI/privacy.html';
 const SUPPORT_URL = 'https://basilgeorge309.github.io/WorksheetAI/support.html';
 
@@ -27,6 +29,7 @@ export default function SettingsScreen() {
   const [isPro, setIsPro] = useState<boolean | null>(null);
   const [restoring, setRestoring] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [deleteVisible, setDeleteVisible] = useState(false);
 
   const refreshPro = useCallback(() => {
     isProUser().then(setIsPro);
@@ -106,6 +109,13 @@ export default function SettingsScreen() {
       <Text style={styles.sectionLabel}>Legal</Text>
       <TouchableOpacity
         activeOpacity={0.7}
+        onPress={() => Linking.openURL(TERMS_URL)}
+        style={styles.legalRow}>
+        <Text style={styles.legalText}>Terms of Service</Text>
+        <Ionicons name="chevron-forward" size={16} color="#6B6B6B" />
+      </TouchableOpacity>
+      <TouchableOpacity
+        activeOpacity={0.7}
         onPress={() => Linking.openURL(PRIVACY_URL)}
         style={styles.legalRow}>
         <Text style={styles.legalText}>Privacy Policy</Text>
@@ -134,6 +144,14 @@ export default function SettingsScreen() {
             <Text style={styles.signOutLabel}>Sign out</Text>
           )}
         </Pressable>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          activeOpacity={0.7}
+          onPress={() => setDeleteVisible(true)}
+          style={styles.deleteRow}>
+          <Text style={styles.deleteText}>Delete Account</Text>
+        </TouchableOpacity>
       </View>
 
       <PaywallModal
@@ -143,6 +161,10 @@ export default function SettingsScreen() {
           setPaywallVisible(false);
           refreshPro();
         }}
+      />
+      <DeleteAccountModal
+        visible={deleteVisible}
+        onClose={() => setDeleteVisible(false)}
       />
     </View>
   );
@@ -273,4 +295,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#DC2626',
   },
+  deleteRow: {
+    marginTop: 8,
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  deleteText: {
+    fontSize: 15,
+    color: '#DC2626',
+  },
 });
+
