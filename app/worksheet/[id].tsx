@@ -12,13 +12,20 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 
+import OnboardingButton from '../../components/onboarding/OnboardingButton';
 import { supabase } from '../../lib/supabase';
 
 export default function WorksheetDetailScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string; outputPath?: string }>();
+  const params = useLocalSearchParams<{
+    id: string;
+    outputPath?: string;
+    status?: string;
+  }>();
   const worksheetId = params.id;
   const outputPath = params.outputPath ?? '';
+  const status = params.status ?? '';
+  const showProcessing = status !== 'complete' && !outputPath;
 
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
@@ -91,6 +98,20 @@ export default function WorksheetDetailScreen() {
       setShareLoading(false);
     }
   };
+
+  // Opened from History for a worksheet that isn't finished yet.
+  if (showProcessing) {
+    return (
+      <View style={[styles.container, styles.processingContainer]}>
+        <Ionicons name="hourglass-outline" size={48} color="#D1D5DB" />
+        <Text style={styles.processingTitle}>Still working on it</Text>
+        <Text style={styles.processingSubtitle}>Check back in a moment.</Text>
+        <View style={styles.processingButton}>
+          <OnboardingButton label="Go back" onPress={() => router.back()} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -170,6 +191,25 @@ const styles = StyleSheet.create({
     height: 40,
     alignItems: 'flex-start',
     justifyContent: 'center',
+  },
+  processingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  processingTitle: {
+    marginTop: 16,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  processingSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#6B6B6B',
+  },
+  processingButton: {
+    marginTop: 24,
+    width: '100%',
   },
   title: {
     marginTop: 8,

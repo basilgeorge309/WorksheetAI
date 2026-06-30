@@ -1,98 +1,193 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Animated,
   FlatList,
-  Pressable,
+  RefreshControl,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
-import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 
-type WorksheetRow = {
+type WorksheetStatus = 'pending' | 'processing' | 'complete' | 'error';
+
+type Worksheet = {
   id: string;
+  created_at: string;
   storage_path: string;
   output_path: string | null;
-  status: 'pending' | 'processing' | 'complete' | 'error';
-  created_at: string;
+  status: WorksheetStatus;
+  style: string | null;
+  difficulty: string | null;
+  subject: string | null;
 };
 
-const STATUS_COLORS: Record<string, string> = {
-  complete: '#16A34A',
-  processing: '#2563EB',
-  pending: '#2563EB',
-  error: '#DC2626',
+const BADGE_CONFIG: Record<WorksheetStatus, { label: string; bg: string; text: string }> = {
+  complete: { label: 'Done', bg: '#DCFCE7', text: '#16A34A' },
+  processing: { label: 'Working…', bg: '#DBEAFE', text: '#2563EB' },
+  pending: { label: 'Pending', bg: '#FEF9C3', text: '#CA8A04' },
+  error: { label: 'Failed', bg: '#FEE2E2', text: '#DC2626' },
 };
 
-function basename(path: string): string {
-  const parts = path.split('/');
-  return parts[parts.length - 1] || path;
-}
-
-function formatDate(iso: string): string {
+const formatDate = (iso: string) => {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
+};
+
+const getFilename = (path: string) => path.split('/').pop() ?? path;
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const getSubtitle = (w: Worksheet) => {
+  const parts = [formatDate(w.created_at)];
+  if (w.style) parts.push(capitalize(w.style));
+  if (w.difficulty) parts.push(capitalize(w.difficulty));
+  return parts.join(' · ');
+};
 
 function SkeletonRow() {
-  const opacity = useRef(new Animated.Value(0.3)).current;
+  const opacity = useRef(new Animated.Value(0.4)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.7, duration: 600, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 0.3, duration: 600, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.8, duration: 600, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.4, duration: 600, useNativeDriver: true }),
       ])
     );
     loop.start();
     return () => loop.stop();
   }, [opacity]);
-  return <Animated.View style={[styles.skeleton, { opacity }]} />;
+
+  return (
+    <View style={styles.row}>
+      <View style={styles.iconWrap}>
+        <Ionicons name="document-outline" size={24} color="#E5E5E5" />
+      </View>
+      <View style={styles.rowMiddle}>
+        <Animated.View style={[styles.skelTitle, { opacity }]} />
+        <Animated.View style={[styles.skelSubtitle, { opacity }]} />
+      </View>
+      <Animated.View style={[styles.skelBadge, { opacity }]} />
+    </View>
+  );
 }
 
 export default function HistoryScreen() {
-  const { user } = useAuth();
   const router = useRouter();
-  const [rows, setRows] = useState<WorksheetRow[] | null>(null);
+  const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(() => {
-    if (!user) return;
+  const fetchHistory = async () => {
     setError(null);
-    supabase
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error: queryError } = await supabase
       .from('worksheets')
-      .select('id, storage_path, output_path, status, created_at')
+      .select(
+        'id, created_at, storage_path, output_path, status, style, difficulty, subject'
+      )
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(20)
-      .then(({ data, error: queryError }) => {
-        if (queryError) {
-          setError(queryError.message);
-          setRows([]);
-          return;
-        }
-        setRows((data as WorksheetRow[]) ?? []);
-      });
-  }, [user]);
+      .limit(20);
+
+    if (queryError) setError(queryError.message);
+    else setWorksheets((data as Worksheet[]) ?? []);
+  };
 
   useFocusEffect(
     useCallback(() => {
-      setRows(null);
-      load();
-    }, [load])
+      setLoading(true);
+      fetchHistory().finally(() => setLoading(false));
+    }, [])
   );
 
-  if (rows === null) {
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchHistory();
+    setRefreshing(false);
+  };
+
+  const openWorksheet = (w: Worksheet) => {
+    router.push(
+      `/worksheet/${w.id}?outputPath=${encodeURIComponent(w.output_path ?? '')}&status=${w.status}`
+    );
+  };
+
+  const renderRow = ({ item }: { item: Worksheet }) => {
+    const badge = BADGE_CONFIG[item.status] ?? BADGE_CONFIG.pending;
+    return (
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => openWorksheet(item)}
+        style={styles.row}>
+        <View style={styles.iconWrap}>
+          <Ionicons name="document-outline" size={24} color="#6B6B6B" />
+        </View>
+        <View style={styles.rowMiddle}>
+          <Text selectable={false} numberOfLines={1} style={styles.filename}>
+            {getFilename(item.storage_path)}
+          </Text>
+          <Text selectable={false} style={styles.subtitle}>
+            {getSubtitle(item)}
+          </Text>
+        </View>
+        <View style={[styles.badge, { backgroundColor: badge.bg }]}>
+          <Text selectable={false} style={[styles.badgeText, { color: badge.text }]}>
+            {badge.label}
+          </Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const Title = (
+    <Text selectable={false} style={styles.title}>
+      History
+    </Text>
+  );
+
+  // Loading: skeletons.
+  if (loading && !refreshing) {
     return (
       <View style={styles.container}>
-        <Text style={styles.title}>History</Text>
-        <View style={styles.list}>
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
+        {Title}
+        <View style={styles.skeletonList}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <SkeletonRow key={i} />
+          ))}
+        </View>
+      </View>
+    );
+  }
+
+  // Error.
+  if (error) {
+    return (
+      <View style={styles.container}>
+        {Title}
+        <View style={styles.centered}>
+          <Text selectable={false} style={styles.errorText}>
+            Couldn&apos;t load history
+          </Text>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            onPress={() => {
+              setLoading(true);
+              fetchHistory().finally(() => setLoading(false));
+            }}>
+            <Text selectable={false} style={styles.tryAgain}>
+              Try again
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -100,44 +195,28 @@ export default function HistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>History</Text>
-      {error && <Text style={styles.errorText}>{error}</Text>}
-      {rows.length === 0 ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>No worksheets yet. Upload your first one.</Text>
-        </View>
-      ) : (
-        <FlatList
-          style={styles.list}
-          data={rows}
-          keyExtractor={(item) => item.id}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
-          renderItem={({ item }) => {
-            const color = STATUS_COLORS[item.status] ?? '#6B6B6B';
-            const tappable = item.status === 'complete' && !!item.output_path;
-            return (
-              <Pressable
-                disabled={!tappable}
-                onPress={() =>
-                  router.push(
-                    `/worksheet/${item.id}?outputPath=${encodeURIComponent(item.output_path ?? '')}`
-                  )
-                }
-                style={styles.row}>
-                <View style={styles.rowMain}>
-                  <Text style={styles.rowName} numberOfLines={1}>
-                    {basename(item.storage_path)}
-                  </Text>
-                  <Text style={styles.rowDate}>{formatDate(item.created_at)}</Text>
-                </View>
-                <View style={[styles.badge, { borderColor: color }]}>
-                  <Text style={[styles.badgeText, { color }]}>{item.status}</Text>
-                </View>
-              </Pressable>
-            );
-          }}
-        />
-      )}
+      {Title}
+      <FlatList
+        data={worksheets}
+        keyExtractor={(item) => item.id}
+        renderItem={renderRow}
+        ItemSeparatorComponent={() => <View style={styles.separator} />}
+        contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#2563EB" />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyState}>
+            <Ionicons name="time-outline" size={48} color="#D1D5DB" />
+            <Text selectable={false} style={styles.emptyTitle}>
+              No worksheets yet
+            </Text>
+            <Text selectable={false} style={styles.emptySubtitle}>
+              Upload your first one from the Home tab.
+            </Text>
+          </View>
+        }
+      />
     </View>
   );
 }
@@ -146,68 +225,109 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    padding: 24,
+    paddingHorizontal: 24,
   },
   title: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: '700',
     color: '#1A1A1A',
+    paddingTop: 16,
+    marginBottom: 8,
   },
-  list: {
-    marginTop: 20,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#E5E5E5',
+  listContent: {
+    paddingBottom: 100,
+    flexGrow: 1,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
   },
-  rowMain: {
-    flex: 1,
-    marginRight: 12,
+  iconWrap: {
+    width: 32,
+    alignItems: 'flex-start',
   },
-  rowName: {
+  rowMiddle: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+  filename: {
     fontSize: 15,
+    fontWeight: '600',
     color: '#1A1A1A',
   },
-  rowDate: {
+  subtitle: {
     marginTop: 4,
-    fontSize: 12,
+    fontSize: 13,
     color: '#6B6B6B',
   },
   badge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
+    borderRadius: 12,
   },
   badgeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
-    textTransform: 'capitalize',
   },
-  empty: {
+  separator: {
+    height: 1,
+    backgroundColor: '#E5E5E5',
+  },
+  skeletonList: {
+    marginTop: 4,
+  },
+  skelTitle: {
+    width: 180,
+    height: 14,
+    borderRadius: 4,
+    backgroundColor: '#E5E5E5',
+  },
+  skelSubtitle: {
+    marginTop: 8,
+    width: 120,
+    height: 12,
+    borderRadius: 4,
+    backgroundColor: '#F0F0F0',
+  },
+  skelBadge: {
+    width: 52,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#E5E5E5',
+  },
+  centered: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyText: {
+  errorText: {
     fontSize: 15,
-    color: '#6B6B6B',
+    color: '#DC2626',
     textAlign: 'center',
   },
-  errorText: {
+  tryAgain: {
     marginTop: 12,
-    fontSize: 13,
-    color: '#DC2626',
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2563EB',
   },
-  skeleton: {
-    height: 56,
-    borderRadius: 8,
-    marginBottom: 12,
-    backgroundColor: '#E5E5E5',
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: 80,
+  },
+  emptyTitle: {
+    marginTop: 12,
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#1A1A1A',
+  },
+  emptySubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: '#6B6B6B',
+    textAlign: 'center',
   },
 });
