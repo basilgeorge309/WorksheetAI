@@ -99,9 +99,19 @@ export async function fillWorksheet(
   subject: string
 ): Promise<FillResult> {
   try {
+    // Forward the user's access token so the edge function can verify identity
+    // + ownership (it rejects calls without a valid JWT).
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
     const { data: invokeData, error: invokeError } = await supabase.functions.invoke(
       'fill-worksheet',
-      { body: { worksheetId, storagePath, style, difficulty, subject } }
+      {
+        body: { worksheetId, storagePath, style, difficulty, subject },
+        headers: session?.access_token
+          ? { Authorization: `Bearer ${session.access_token}` }
+          : undefined,
+      }
     );
 
     // Fast path: the function ran synchronously and told us the result.
@@ -169,26 +179,6 @@ export async function checkUsage(userId: string): Promise<UsageInfo> {
   }
 }
 
-/**
- * Increment this month's usage. Best-effort: swallows errors (returns void).
- */
-export async function incrementUsage(userId: string): Promise<void> {
-  try {
-    const month = currentMonth();
-    const { data } = await supabase
-      .from('usage')
-      .select('worksheets_used')
-      .eq('user_id', userId)
-      .eq('month', month)
-      .maybeSingle();
-    const next = (data?.worksheets_used ?? 0) + 1;
-    await supabase
-      .from('usage')
-      .upsert(
-        { user_id: userId, month, worksheets_used: next },
-        { onConflict: 'user_id,month' }
-      );
-  } catch {
-    // Non-fatal — usage tracking is best-effort for MVP.
-  }
-}
+// NOTE: usage is now incremented SERVER-SIDE by the fill-worksheet edge function
+// (service role). Clients can no longer write the `usage` table (RLS write
+// policies were removed), so there is intentionally no client incrementUsage().

@@ -13,6 +13,11 @@ import { PDFDocument, StandardFonts, rgb } from 'https://esm.sh/pdf-lib@1.17.1';
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 2000;
 
+// CORS: kept as '*' on purpose. This function is called from the React Native
+// app, which (unlike a browser) does not send an Origin header, so browser-style
+// origin restriction does not apply — the real access control is the JWT + the
+// worksheet-ownership check below, not the Origin. If a WEB client is ever added,
+// replace '*' with an explicit origin allowlist (e.g. your web app's domain).
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
@@ -130,6 +135,7 @@ Deno.serve(async (req: Request) => {
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
   const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
   const supabase = createClient(supabaseUrl, serviceRoleKey);
 
@@ -143,9 +149,60 @@ Deno.serve(async (req: Request) => {
     if (!worksheetId || !storagePath) {
       return json({ success: false, error: 'worksheetId and storagePath are required.' }, 400);
     }
+
+    // --- #5 Auth: require a valid Supabase user JWT (userClient pattern) ---
+    // Validate the caller's token via an anon client that forwards the incoming
+    // Authorization header. getUser() then resolves the user from that JWT.
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const userClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const {
+      data: { user },
+      error: userError,
+    } = await userClient.auth.getUser();
+    if (userError || !user) {
+      return json({ success: false, error: 'Unauthorized' }, 401);
+    }
+
+    // --- #5 Ownership: the worksheet must belong to this user ---
+    const { data: worksheet, error: fetchError } = await supabase
+      .from('worksheets')
+      .select('user_id')
+      .eq('id', worksheetId)
+      .single();
+    if (fetchError || worksheet?.user_id !== user.id) {
+      return json({ success: false, error: 'Forbidden' }, 403);
+    }
+
+    // --- #6 Rate limit: server-side monthly backstop (client check is bypassable) ---
+    const month = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+    const { data: usageRow } = await supabase
+      .from('usage')
+      .select('worksheets_used')
+      .eq('user_id', user.id)
+      .eq('month', month)
+      .maybeSingle();
+    const FREE_LIMIT = 3;
+    const isPro = false; // TODO: verify RevenueCat entitlement server-side (future session)
+    if (!isPro && (usageRow?.worksheets_used ?? 0) >= FREE_LIMIT) {
+      return json({ success: false, error: 'Usage limit reached' }, 429);
+    }
+
     if (!anthropicKey) {
       throw new Error('ANTHROPIC_API_KEY is not configured.');
     }
+
+    // --- #6 Count this attempt (service-role write — users can no longer modify
+    // usage directly). Counting on-attempt caps Anthropic spend at FREE_LIMIT/month. ---
+    await supabase.from('usage').upsert(
+      {
+        user_id: user.id,
+        month,
+        worksheets_used: (usageRow?.worksheets_used ?? 0) + 1,
+      },
+      { onConflict: 'user_id,month' }
+    );
 
     await supabase.from('worksheets').update({ status: 'processing' }).eq('id', worksheetId);
 

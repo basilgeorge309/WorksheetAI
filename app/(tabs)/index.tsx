@@ -19,7 +19,6 @@ import {
   checkUsage,
   fillWorksheet,
   FileType,
-  incrementUsage,
   uploadWorksheet,
 } from '../../lib/worksheet';
 
@@ -171,10 +170,8 @@ export default function HomeScreen() {
       return;
     }
 
-    // 4. Count the usage now that the upload succeeded.
-    await incrementUsage(user.id);
-
-    // 5. Fill.
+    // 4. Fill. (Usage is counted server-side by the edge function — the client
+    // can no longer write the usage table.)
     const filled = await fillWorksheet(
       uploaded.worksheetId,
       uploaded.storagePath,
