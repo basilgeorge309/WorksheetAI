@@ -1,17 +1,23 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   ActivityIndicator,
+  Linking,
   Pressable,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
 import PaywallModal from '../../components/PaywallModal';
 import { useAuth } from '../../context/AuthContext';
 import { isProUser, restorePurchases } from '../../lib/revenuecat';
+
+const PRIVACY_URL = 'https://basilgeorge309.github.io/WorksheetAI/privacy.html';
+const SUPPORT_URL = 'https://basilgeorge309.github.io/WorksheetAI/support.html';
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
@@ -57,8 +63,11 @@ export default function SettingsScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Settings</Text>
-      <Text style={styles.subtitle}>
-        {user?.email ? `Signed in as ${user.email}` : 'Account and subscription options.'}
+
+      {/* Account */}
+      <Text style={styles.sectionLabel}>Account</Text>
+      <Text style={styles.email}>
+        {user?.email ?? 'Not signed in'}
       </Text>
 
       {/* Subscription */}
@@ -92,6 +101,23 @@ export default function SettingsScreen() {
           <Text style={styles.restoreText}>Restore purchases</Text>
         )}
       </Pressable>
+
+      {/* Legal */}
+      <Text style={styles.sectionLabel}>Legal</Text>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => Linking.openURL(PRIVACY_URL)}
+        style={styles.legalRow}>
+        <Text style={styles.legalText}>Privacy Policy</Text>
+        <Ionicons name="chevron-forward" size={16} color="#6B6B6B" />
+      </TouchableOpacity>
+      <TouchableOpacity
+        activeOpacity={0.7}
+        onPress={() => Linking.openURL(SUPPORT_URL)}
+        style={styles.legalRow}>
+        <Text style={styles.legalText}>Support</Text>
+        <Ionicons name="chevron-forward" size={16} color="#6B6B6B" />
+      </TouchableOpacity>
 
       <View style={styles.spacer} />
 
@@ -133,10 +159,10 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1A1A1A',
   },
-  subtitle: {
-    marginTop: 8,
-    fontSize: 15,
+  email: {
+    fontSize: 14,
     color: '#6B6B6B',
+    paddingVertical: 12,
   },
   sectionLabel: {
     marginTop: 32,
@@ -145,6 +171,18 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     color: '#6B6B6B',
+  },
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  legalText: {
+    fontSize: 15,
+    color: '#1A1A1A',
   },
   planRow: {
     marginTop: 12,

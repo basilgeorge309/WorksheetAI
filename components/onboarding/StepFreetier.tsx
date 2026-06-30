@@ -67,7 +67,21 @@ export default function StepFreetier({ onNext }: Props) {
   };
 
   const handleApple = () => runProvider('apple', signInWithApple);
-  const handleGoogle = () => runProvider('google', signInWithGoogle);
+
+  const handleGoogle = async () => {
+    setError(null);
+    setInfo(null);
+    setBusy('google');
+    const { error: googleError } = await signInWithGoogle();
+    setBusy(null);
+    if (googleError?.message === 'cancelled') return; // silent
+    if (googleError) {
+      setError('Google sign in failed. Try email instead.');
+      return;
+    }
+    // Success — let the shell mark onboarding complete + navigate to /(tabs)/.
+    onNext();
+  };
 
   const handleEmail = () => {
     if (!email.trim() || !password) {

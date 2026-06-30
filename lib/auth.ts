@@ -1,4 +1,4 @@
-import { makeRedirectUri } from 'expo-auth-session';
+import * as AuthSession from 'expo-auth-session';
 import * as Crypto from 'expo-crypto';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -20,45 +20,35 @@ function normalizeError(error: unknown): { message: string } {
 }
 
 /**
- * Parse access/refresh tokens out of a redirect URL. Supabase's implicit OAuth
- * flow returns them in the URL fragment (#) and/or query (?). We merge both.
+ * Pull a single query/fragment param out of a redirect URL. Used to read the
+ * OAuth `code` without relying on Hermes's incomplete `URL.searchParams`.
  */
-function parseRedirectParams(url: string): Record<string, string> {
-  const out: Record<string, string> = {};
+function getRedirectParam(url: string, key: string): string | null {
   const parts = url.split(/[?#]/);
   parts.shift(); // drop the scheme + path, keep param chunks
-  const merged = parts.join('&');
-  for (const pair of merged.split('&')) {
+  for (const pair of parts.join('&').split('&')) {
     if (!pair) continue;
     const [k, v] = pair.split('=');
-    if (k) out[decodeURIComponent(k)] = decodeURIComponent(v ?? '');
+    if (decodeURIComponent(k) === key) return decodeURIComponent(v ?? '');
   }
-  return out;
-}
-
-async function createSessionFromUrl(url: string): Promise<AuthResult> {
-  const params = parseRedirectParams(url);
-  if (params.error_description) {
-    return { data: null, error: { message: params.error_description } };
-  }
-  const { access_token, refresh_token } = params;
-  if (!access_token || !refresh_token) {
-    return { data: null, error: { message: 'No session returned from provider.' } };
-  }
-  const { data, error } = await supabase.auth.setSession({
-    access_token,
-    refresh_token,
-  });
-  return { data, error: error ? normalizeError(error) : null };
+  return null;
 }
 
 /**
- * Google OAuth via expo-auth-session + Supabase. Requires a Supabase Google
- * provider config and the redirect URL registered (see dashboard checklist).
+ * Google OAuth via Supabase + expo-auth-session (PKCE code exchange). Opens a
+ * browser, then exchanges the returned code for a Supabase session. Works in a
+ * dev/standalone build; no native module. Requires the Supabase Google provider
+ * + redirect URL configured (see dashboard checklist).
  */
 export async function signInWithGoogle(): Promise<AuthResult> {
   try {
-    const redirectTo = makeRedirectUri();
+    const redirectTo = AuthSession.makeRedirectUri({
+      scheme: 'worksheetai',
+      path: 'auth/callback',
+      preferLocalhost: false,
+    });
+    console.log('Redirect URI:', redirectTo);
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo, skipBrowserRedirect: true },
@@ -69,13 +59,27 @@ export async function signInWithGoogle(): Promise<AuthResult> {
     }
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
     if (result.type === 'success' && result.url) {
-      return createSessionFromUrl(result.url);
+      const code = getRedirectParam(result.url, 'code');
+      if (code) {
+        const { data: sessionData, error: exchangeError } =
+          await supabase.auth.exchangeCodeForSession(code);
+        return {
+          data: sessionData,
+          error: exchangeError ? normalizeError(exchangeError) : null,
+        };
+      }
+      return { data: null, error: { message: 'Authentication failed' } };
     }
-    // User dismissed the browser — treat as a non-error cancellation.
-    return { data: null, error: { message: 'Sign-in was cancelled.' } };
-  } catch (error) {
-    return { data: null, error: normalizeError(error) };
+
+    if (result.type === 'cancel' || result.type === 'dismiss') {
+      return { data: null, error: { message: 'cancelled' } };
+    }
+
+    return { data: null, error: { message: 'Authentication failed' } };
+  } catch (e) {
+    return { data: null, error: normalizeError(e) };
   }
 }
 
