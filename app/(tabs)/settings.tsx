@@ -18,9 +18,11 @@ import { useAuth } from '../../context/AuthContext';
 import { isProUser, restorePurchases } from '../../lib/revenuecat';
 import { border, colors, radius, shadow, type } from '../../constants/theme';
 
-const TERMS_URL = 'https://basilgeorge309.github.io/WorksheetAI/terms.html';
-const PRIVACY_URL = 'https://basilgeorge309.github.io/WorksheetAI/privacy.html';
-const SUPPORT_URL = 'https://basilgeorge309.github.io/WorksheetAI/support.html';
+// GitHub Pages project site for repo `worksheetai` (Pages → serve from /docs).
+// The path segment is case-sensitive and must match the repo name's casing.
+const TERMS_URL = 'https://basilgeorge309.github.io/worksheetai/terms.html';
+const PRIVACY_URL = 'https://basilgeorge309.github.io/worksheetai/privacy.html';
+const SUPPORT_URL = 'https://basilgeorge309.github.io/worksheetai/support.html';
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();

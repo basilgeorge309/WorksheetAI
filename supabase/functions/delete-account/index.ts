@@ -46,14 +46,28 @@ Deno.serve(async (req: Request) => {
 
     const adminClient = createClient(supabaseUrl, serviceKey);
 
-    // 1. Remove the user's uploaded files (outputs cascade is N/A for storage, so
-    // also sweep any outputs we can identify — uploads are the user-scoped ones).
+    // 1. Remove the user's uploaded source files (these live under the
+    // user-scoped uploads/{uid}/ prefix).
     const { data: files } = await adminClient.storage
       .from('worksheets')
       .list(`uploads/${user.id}`);
     if (files && files.length > 0) {
       const paths = files.map((f) => `uploads/${user.id}/${f.name}`);
       await adminClient.storage.from('worksheets').remove(paths);
+    }
+
+    // M3 — also remove generated outputs. Their path is outputs/{worksheetId}.pdf
+    // (NOT user-scoped), so resolve them from the user's worksheet rows BEFORE the
+    // deleteUser cascade wipes those rows; otherwise the filled PDFs are orphaned.
+    const { data: rows } = await adminClient
+      .from('worksheets')
+      .select('output_path')
+      .eq('user_id', user.id);
+    const outputPaths = (rows ?? [])
+      .map((r) => r.output_path as string | null)
+      .filter((p): p is string => !!p);
+    if (outputPaths.length > 0) {
+      await adminClient.storage.from('worksheets').remove(outputPaths);
     }
 
     // 2. Delete the auth user — cascades to profiles/worksheets/usage via FKs.

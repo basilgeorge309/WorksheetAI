@@ -1,4 +1,4 @@
-// WorksheetAI — fill-worksheet edge function (Deno).
+// Scribbl — fill-worksheet edge function (Deno).
 //
 // Flow: download uploaded PDF (service role) -> send PDF to Claude (native PDF) ->
 // the model generates answers -> pdf-lib writes them onto the PDF ->
@@ -71,7 +71,7 @@ function sanitizeLine(text: string): string {
   return text.replace(/→/g, '->').replace(/[^\x20-\x7E]/g, '').trim().slice(0, 80);
 }
 
-// Draw a multi-line answer block, one line per "\n", stepping down by 1.4x the
+// Draw a multi-line answer block, one line per "\n", stepping down by 2.2x the
 // font size. Skips anything that would fall off the bottom of the page. Returns
 // the total vertical height the block consumed.
 function drawMultilineAnswer(
@@ -193,16 +193,9 @@ Deno.serve(async (req: Request) => {
       throw new Error('ANTHROPIC_API_KEY is not configured.');
     }
 
-    // --- #6 Count this attempt (service-role write — users can no longer modify
-    // usage directly). Counting on-attempt caps Anthropic spend at FREE_LIMIT/month. ---
-    await supabase.from('usage').upsert(
-      {
-        user_id: user.id,
-        month,
-        worksheets_used: (usageRow?.worksheets_used ?? 0) + 1,
-      },
-      { onConflict: 'user_id,month' }
-    );
+    // M4 — usage is counted only on SUCCESS now (see the complete-update below),
+    // so blank/unreadable (422) results and Stalled retries don't burn a credit.
+    // The 429 check above still caps a user at FREE_LIMIT *successful* worksheets.
 
     await supabase.from('worksheets').update({ status: 'processing' }).eq('id', worksheetId);
 
@@ -368,7 +361,6 @@ Deno.serve(async (req: Request) => {
 
     // Pencil effect: gray (not pen blue), with slight per-answer shade variation
     // so the writing doesn't look mechanically uniform.
-    const pencilColor = rgb(0.25, 0.25, 0.25);
     const pencilColors = [
       rgb(0.25, 0.25, 0.25), // normal pencil stroke
       rgb(0.35, 0.35, 0.35), // slightly lighter
@@ -376,17 +368,8 @@ Deno.serve(async (req: Request) => {
     ];
     const getPencilColor = (index: number) => pencilColors[index % 3];
 
-    // Student name near the top-right, in pencil + handwriting font.
-    const nameX = width - 130;
-    const nameY = height - 58;
-    firstPage.drawText('Alex Johnson', {
-      x: nameX,
-      y: nameY,
-      size: 11,
-      font: answerFont,
-      color: pencilColor,
-    });
-    console.log('Drew name: Alex Johnson at x,y:', nameX, nameY);
+    // M2 — no hardcoded student name is drawn (it would stamp the same stranger's
+    // name on every user's worksheet). The Name field, if any, is left blank.
 
     // Position each answer: column comes from the question index (x_percent from
     // Claude is unreliable), y_percent gives the vertical position, and
@@ -442,6 +425,23 @@ Deno.serve(async (req: Request) => {
     if (upError) {
       throw new Error(`Could not upload filled PDF: ${upError.message}`);
     }
+
+    // M4 — count usage only now that we have a real result (service-role write).
+    // Re-read first so concurrent successes don't clobber each other's count.
+    const { data: freshUsage } = await supabase
+      .from('usage')
+      .select('worksheets_used')
+      .eq('user_id', user.id)
+      .eq('month', month)
+      .maybeSingle();
+    await supabase.from('usage').upsert(
+      {
+        user_id: user.id,
+        month,
+        worksheets_used: (freshUsage?.worksheets_used ?? usageRow?.worksheets_used ?? 0) + 1,
+      },
+      { onConflict: 'user_id,month' }
+    );
 
     // 8. Mark the worksheet complete, and persist the answer count + style so the
     // worksheet screen can show "{N} questions answered, {style}-style".
