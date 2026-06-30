@@ -14,7 +14,6 @@ import {
 
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
 import PaywallModal from '../../components/PaywallModal';
-import RuledBackground from '../../components/RuledBackground';
 import { border, colors, radius, spacing, type } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
 import { sendLocalNotification } from '../../lib/notifications';
@@ -211,7 +210,6 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.root}>
-      <RuledBackground />
       <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
         <Text style={styles.appName}>Scribbl</Text>
         <Text style={[styles.usageText, { color: usageColor }]}>
@@ -349,9 +347,11 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingRight: spacing.xxl,
-    paddingLeft: 56,
+    paddingLeft: spacing.xl,
     paddingTop: spacing.xxxl,
     paddingBottom: spacing.xxl,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.marginRed,
   },
   appName: {
     ...type.displaySerif,
@@ -368,7 +368,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     height: 48,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     backgroundColor: colors.paper,
     ...border.hairline,
   },
@@ -389,14 +389,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.md,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     backgroundColor: colors.paper,
-    ...border.dashed,
+    ...border.hairline,
   },
   thumbnail: {
     width: 60,
     height: 60,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     ...border.hairline,
   },
   fileName: {
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   segmented: {
     marginTop: spacing.md,
     flexDirection: 'row',
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     overflow: 'hidden',
     ...border.rule,
   },

@@ -15,8 +15,7 @@ import { WebView } from 'react-native-webview';
 
 import Confetti from '../../components/Confetti';
 import OnboardingButton from '../../components/onboarding/OnboardingButton';
-import RuledBackground from '../../components/RuledBackground';
-import { border, colors, radius, spacing, type } from '../../constants/theme';
+import { border, colors, radius, shadow, spacing, type } from '../../constants/theme';
 import { supabase } from '../../lib/supabase';
 
 export default function WorksheetDetailScreen() {
@@ -191,7 +190,6 @@ export default function WorksheetDetailScreen() {
 
   return (
     <View style={styles.container}>
-      <RuledBackground />
       <Confetti trigger={confettiOn} />
 
       <Pressable
@@ -285,7 +283,9 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xxl,
     paddingBottom: spacing.xxl,
     paddingRight: spacing.xxl,
-    paddingLeft: 56,
+    paddingLeft: spacing.xl,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.marginRed,
   },
   backButton: {
     width: 40,
@@ -344,7 +344,7 @@ const styles = StyleSheet.create({
   },
   preview: {
     height: 400,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     overflow: 'hidden',
     backgroundColor: colors.paper,
     ...border.hairline,
@@ -375,25 +375,24 @@ const styles = StyleSheet.create({
   actionButton: {
     flex: 1,
     height: 52,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   downloadButton: {
     backgroundColor: colors.ink,
+    ...shadow.button,
   },
   downloadLabel: {
-    ...type.bodySerif,
-    fontSize: 17,
+    ...type.buttonSerif,
     color: colors.paper,
   },
   shareButton: {
     backgroundColor: 'transparent',
-    ...border.rule,
+    ...border.hairline,
   },
   shareLabel: {
-    ...type.bodySerif,
-    fontSize: 17,
+    ...type.buttonSerif,
     color: colors.ink,
   },
   dim: {

@@ -14,10 +14,9 @@ import {
 
 import DeleteAccountModal from '../../components/DeleteAccountModal';
 import PaywallModal from '../../components/PaywallModal';
-import RuledBackground from '../../components/RuledBackground';
 import { useAuth } from '../../context/AuthContext';
 import { isProUser, restorePurchases } from '../../lib/revenuecat';
-import { border, colors, radius, type } from '../../constants/theme';
+import { border, colors, radius, shadow, type } from '../../constants/theme';
 
 const TERMS_URL = 'https://basilgeorge309.github.io/WorksheetAI/terms.html';
 const PRIVACY_URL = 'https://basilgeorge309.github.io/WorksheetAI/privacy.html';
@@ -67,7 +66,6 @@ export default function SettingsScreen() {
 
   return (
     <View style={styles.container}>
-      <RuledBackground />
       <Text style={styles.title}>Settings</Text>
 
       {/* Account */}
@@ -183,7 +181,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 24,
-    paddingLeft: 56,
+    paddingLeft: 20,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.marginRed,
     backgroundColor: colors.paper,
   },
   title: {
@@ -193,8 +193,9 @@ const styles = StyleSheet.create({
   card: {
     marginTop: 8,
     backgroundColor: colors.paper,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     paddingHorizontal: 16,
+    overflow: 'hidden',
     ...border.hairline,
   },
   email: {
@@ -205,7 +206,7 @@ const styles = StyleSheet.create({
   sectionLabel: {
     marginTop: 32,
     ...type.label,
-    color: colors.graphite,
+    color: colors.mutedText,
   },
   legalRow: {
     flexDirection: 'row',
@@ -213,7 +214,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: colors.paperLine,
+    borderBottomColor: colors.cardBorder,
   },
   legalRowLast: {
     borderBottomWidth: 0,
@@ -235,11 +236,11 @@ const styles = StyleSheet.create({
   badge: {
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: radius.sharp,
+    borderRadius: radius.sm,
     ...border.hairline,
   },
   badgeFree: {
-    borderColor: colors.paperLine,
+    borderColor: colors.cardBorder,
     backgroundColor: colors.paper,
   },
   badgePro: {
@@ -259,14 +260,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
     width: '100%',
     height: 52,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.ink,
+    ...shadow.button,
   },
   upgradeLabel: {
-    ...type.body,
-    fontWeight: '600',
+    ...type.buttonSerif,
     color: colors.paper,
   },
   restoreLink: {
@@ -292,7 +293,7 @@ const styles = StyleSheet.create({
   signOutButton: {
     width: '100%',
     height: 52,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     ...border.hairline,

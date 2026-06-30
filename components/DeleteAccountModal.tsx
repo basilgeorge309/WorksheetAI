@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 
 import { deleteAccount } from '../lib/auth';
-import { colors, radius, border, type } from '../constants/theme';
+import { colors, radius, border, shadow, type } from '../constants/theme';
 
 type Props = {
   visible: boolean;
@@ -138,7 +138,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.paperLine,
+    backgroundColor: colors.cardBorder,
     marginBottom: 20,
   },
   title: {
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     marginTop: 20,
     width: '100%',
     height: 48,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     paddingHorizontal: 16,
     color: colors.ink,
     backgroundColor: colors.paper,
@@ -168,20 +168,22 @@ const styles = StyleSheet.create({
     color: colors.errorRed,
   },
   deleteButton: {
+    ...shadow.button,
     marginTop: 16,
     width: '100%',
     height: 52,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.ink,
   },
   deleteButtonDisabled: {
     backgroundColor: colors.mutedText,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   deleteLabel: {
-    ...type.body,
-    fontWeight: '600',
+    ...type.buttonSerif,
     color: colors.paper,
   },
   cancelButton: {

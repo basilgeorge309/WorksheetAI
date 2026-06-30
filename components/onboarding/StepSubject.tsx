@@ -68,7 +68,9 @@ export default function StepSubject({ onNext, onAnswer, selected }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingLeft: 56,
+    paddingLeft: 20,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.marginRed,
     paddingRight: 24,
     paddingTop: 8,
   },
@@ -88,7 +90,7 @@ const styles = StyleSheet.create({
   card: {
     width: '100%',
     padding: 16,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     backgroundColor: colors.paper,
     ...border.hairline,
   },

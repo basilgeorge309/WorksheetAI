@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 
 import { supabase } from '../../lib/supabase';
-import RuledBackground from '../../components/RuledBackground';
 import { border, colors, radius, spacing, type } from '../../constants/theme';
 
 type WorksheetStatus = 'pending' | 'processing' | 'complete' | 'error';
@@ -23,7 +22,7 @@ type Worksheet = {
   storage_path: string;
   output_path: string | null;
   status: WorksheetStatus;
-  style: string | null;
+  handwriting_style: string | null;
   difficulty: string | null;
   subject: string | null;
 };
@@ -46,7 +45,7 @@ const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 const getSubtitle = (w: Worksheet) => {
   const parts = [formatDate(w.created_at)];
-  if (w.style) parts.push(capitalize(w.style));
+  if (w.handwriting_style) parts.push(capitalize(w.handwriting_style));
   if (w.difficulty) parts.push(capitalize(w.difficulty));
   return parts.join(' · ');
 };
@@ -67,7 +66,7 @@ function SkeletonRow() {
   return (
     <View style={styles.row}>
       <View style={styles.iconWrap}>
-        <Ionicons name="document-outline" size={24} color={colors.paperLine} />
+        <Ionicons name="document-outline" size={24} color={colors.mutedText} />
       </View>
       <View style={styles.rowMiddle}>
         <Animated.View style={[styles.skelTitle, { opacity }]} />
@@ -95,7 +94,7 @@ export default function HistoryScreen() {
     const { data, error: queryError } = await supabase
       .from('worksheets')
       .select(
-        'id, created_at, storage_path, output_path, status, style, difficulty, subject'
+        'id, created_at, storage_path, output_path, status, handwriting_style, difficulty, subject'
       )
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
@@ -161,7 +160,6 @@ export default function HistoryScreen() {
   if (loading && !refreshing) {
     return (
       <View style={styles.container}>
-        <RuledBackground />
         {Title}
         <View style={styles.skeletonList}>
           {Array.from({ length: 5 }).map((_, i) => (
@@ -176,7 +174,6 @@ export default function HistoryScreen() {
   if (error) {
     return (
       <View style={styles.container}>
-        <RuledBackground />
         {Title}
         <View style={styles.centered}>
           <Text selectable={false} style={styles.errorText}>
@@ -199,7 +196,6 @@ export default function HistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <RuledBackground />
       {Title}
       <FlatList
         data={worksheets}
@@ -235,8 +231,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.paper,
-    paddingHorizontal: 24,
-    paddingLeft: 56,
+    paddingRight: 24,
+    paddingLeft: spacing.xl,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.marginRed,
   },
   title: {
     ...type.displaySerif,
@@ -252,7 +250,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.paper,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     padding: 16,
     marginBottom: spacing.sm,
     ...border.hairline,
@@ -277,7 +275,7 @@ const styles = StyleSheet.create({
   badge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: radius.sharp,
+    borderRadius: radius.sm,
     ...border.hairline,
   },
   badgeText: {
@@ -289,21 +287,21 @@ const styles = StyleSheet.create({
   skelTitle: {
     width: 180,
     height: 14,
-    borderRadius: radius.sharp,
-    backgroundColor: colors.paperLine,
+    borderRadius: radius.sm,
+    backgroundColor: colors.cardBorder,
   },
   skelSubtitle: {
     marginTop: 8,
     width: 120,
     height: 12,
-    borderRadius: radius.sharp,
-    backgroundColor: colors.paperLine,
+    borderRadius: radius.sm,
+    backgroundColor: colors.cardBorder,
   },
   skelBadge: {
     width: 52,
     height: 24,
-    borderRadius: radius.sharp,
-    backgroundColor: colors.paperLine,
+    borderRadius: radius.sm,
+    backgroundColor: colors.cardBorder,
   },
   centered: {
     flex: 1,
@@ -331,7 +329,8 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: radius.pill,
-    ...border.dashed,
+    ...border.hairline,
+    borderStyle: 'dashed',
     alignItems: 'center',
     justifyContent: 'center',
   },

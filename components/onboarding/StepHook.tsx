@@ -35,7 +35,9 @@ export default function StepHook({ onNext }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingLeft: 56,
+    paddingLeft: 20,
+    borderLeftWidth: 2,
+    borderLeftColor: colors.marginRed,
     paddingRight: 24,
     paddingBottom: 24,
   },

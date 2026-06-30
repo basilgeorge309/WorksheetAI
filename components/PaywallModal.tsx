@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: colors.paperLine,
+    backgroundColor: colors.cardBorder,
     marginBottom: 20,
   },
   title: {
@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     width: '100%',
     height: 52,
-    borderRadius: radius.sharp,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'transparent',

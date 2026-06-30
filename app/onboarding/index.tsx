@@ -6,7 +6,6 @@ import { Animated, BackHandler, Pressable, StyleSheet, View } from 'react-native
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { colors } from '../../constants/theme';
-import RuledBackground from '../../components/RuledBackground';
 import ProgressDots from '../../components/onboarding/ProgressDots';
 import StepBehind from '../../components/onboarding/StepBehind';
 import StepFreetier from '../../components/onboarding/StepFreetier';
@@ -118,7 +117,6 @@ export default function OnboardingShell() {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <RuledBackground />
       {currentStep > 0 && (
         <View style={styles.header}>
           <Pressable

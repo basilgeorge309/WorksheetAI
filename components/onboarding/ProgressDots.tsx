@@ -1,6 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
-import { border, colors, radius } from '../../constants/theme';
+import { colors, radius } from '../../constants/theme';
 
 type Props = {
   total: number;
@@ -33,14 +33,12 @@ const styles = StyleSheet.create({
   square: {
     width: 10,
     height: 10,
-    borderRadius: radius.sharp,
+    borderRadius: radius.sm,
   },
   squareActive: {
     backgroundColor: colors.ink,
-    ...border.rule,
   },
   squareInactive: {
-    backgroundColor: 'transparent',
-    ...border.rule,
+    backgroundColor: colors.cardBorder,
   },
 });

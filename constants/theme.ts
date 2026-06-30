@@ -1,41 +1,46 @@
-// Scribbl design tokens — Editorial Notebook system (ruled paper, serif italic,
-// ink fills, sharp corners, borders instead of shadows).
+// Scribbl design tokens — Notebook v2 (cleaner): left-margin accent instead of a
+// ruled grid, soft warm card borders, radius.md default, depth on primary buttons.
 import { Platform } from 'react-native';
 
-// Georgia on iOS; graceful serif fallback elsewhere.
-const serif = Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' });
-
 export const colors = {
-  paper: '#FDFCF7', // warm off-white, like real paper
-  paperLine: '#D4DCE8', // faint blue ruled lines
-  marginRed: '#F0B8B8', // the red margin rule
-  ink: '#1C1C1E', // primary text + fills, near-black
-  graphite: '#6B6B70', // secondary text
+  paper: '#FDFCF7',
+  marginRed: '#E8B4B4', // left accent border, not a background grid
+  ink: '#1C1C1E',
+  graphite: '#6B6B70',
   mutedText: '#9CA3AF',
   pencilYellow: '#F5C842',
-  alertRed: '#C45050', // softer than pure red, ink-and-paper feel
+  alertRed: '#C45050',
   alertRedBg: '#FBEAEA',
-  successGreen: '#3F8F5F', // muted, paper-appropriate green
+  successGreen: '#3F8F5F',
   successGreenBg: '#E8F3EC',
   errorRed: '#C0392B',
   errorRedBg: '#FBEAEA',
   warningAmber: '#B8860B',
   warningAmberBg: '#FBF3DC',
-  borderInk: '#1C1C1E', // sharp borders use ink, not soft gray
+  borderInk: '#1C1C1E',
+  cardBorder: '#E5E1D5', // soft warm border for non-selected cards
 };
 
 export const radius = {
-  sharp: 2, // default — almost-square corners
-  sm: 4,
-  md: 6,
-  pill: 999, // only for true pills (badges)
+  sm: 6,
+  md: 8,
+  lg: 12,
+  pill: 999,
 };
 
-// No soft shadows in this system. Borders do the work instead.
 export const border = {
-  hairline: { borderWidth: 1, borderColor: colors.paperLine },
+  hairline: { borderWidth: 1, borderColor: colors.cardBorder },
   rule: { borderWidth: 1.5, borderColor: colors.ink },
-  dashed: { borderWidth: 1.5, borderColor: colors.ink, borderStyle: 'dashed' as const },
+};
+
+export const shadow = {
+  button: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 14,
+    elevation: 6,
+  },
 };
 
 export const spacing = {
@@ -45,29 +50,30 @@ export const spacing = {
   lg: 16,
   xl: 20,
   xxl: 28,
-  xxxl: 36,
+  xxxl: 32,
 };
 
-// Two type families: serif italic for personality/headlines, system sans for
-// UI labels/data (keeps it readable, not twee).
+const serifFont = Platform.select({ ios: 'Georgia', android: 'serif', default: 'Georgia' });
+
 export const type = {
   displaySerif: {
-    fontFamily: serif,
-    fontSize: 28,
+    fontFamily: serifFont,
+    fontSize: 30,
     fontWeight: '700' as const,
     fontStyle: 'italic' as const,
   },
   titleSerif: {
-    fontFamily: serif,
+    fontFamily: serifFont,
     fontSize: 20,
     fontWeight: '700' as const,
     fontStyle: 'italic' as const,
   },
-  bodySerif: { fontFamily: serif, fontSize: 16, fontStyle: 'italic' as const },
+  bodySerif: { fontFamily: serifFont, fontSize: 16, fontStyle: 'italic' as const },
+  buttonSerif: { fontFamily: serifFont, fontSize: 17, fontStyle: 'italic' as const },
   label: {
     fontSize: 11,
     fontWeight: '600' as const,
-    letterSpacing: 1,
+    letterSpacing: 0.8,
     textTransform: 'uppercase' as const,
   },
   body: { fontSize: 15, fontWeight: '400' as const },
