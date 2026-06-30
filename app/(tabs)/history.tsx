@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Animated,
   FlatList,
   RefreshControl,
@@ -11,8 +12,13 @@ import {
   View,
 } from 'react-native';
 
-import { supabase } from '../../lib/supabase';
 import { border, colors, radius, spacing, type } from '../../constants/theme';
+import { supabase } from '../../lib/supabase';
+import { fillWorksheet } from '../../lib/worksheet';
+
+// A pending/processing row older than this is treated as stalled (the edge
+// function never finished — e.g. orphaned pre-auth test data).
+const STALLED_MS = 5 * 60 * 1000;
 
 type WorksheetStatus = 'pending' | 'processing' | 'complete' | 'error';
 
@@ -83,6 +89,7 @@ export default function HistoryScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
 
   const fetchHistory = async () => {
     setError(null);
@@ -123,8 +130,30 @@ export default function HistoryScreen() {
     );
   };
 
+  const isStalled = (w: Worksheet) =>
+    (w.status === 'pending' || w.status === 'processing') &&
+    Date.now() - new Date(w.created_at).getTime() > STALLED_MS;
+
+  // Re-invoke the edge function for a stalled worksheet using its stored values,
+  // then refresh the list when it settles.
+  const handleRetry = async (w: Worksheet) => {
+    setError(null);
+    setRetryingId(w.id);
+    const result = await fillWorksheet(
+      w.id,
+      w.storage_path,
+      w.handwriting_style ?? 'average',
+      w.difficulty ?? 'realistic',
+      w.subject ?? 'general'
+    );
+    setRetryingId(null);
+    if ('error' in result) setError(result.error);
+    await fetchHistory();
+  };
+
   const renderRow = ({ item }: { item: Worksheet }) => {
     const badge = BADGE_CONFIG[item.status] ?? BADGE_CONFIG.pending;
+    const stalled = isStalled(item);
     return (
       <TouchableOpacity
         activeOpacity={0.7}
@@ -141,11 +170,38 @@ export default function HistoryScreen() {
             {getSubtitle(item)}
           </Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.text }]}>
-          <Text selectable={false} style={[styles.badgeText, { color: badge.text }]}>
-            {badge.label}
-          </Text>
-        </View>
+        {stalled ? (
+          <View style={styles.stalledGroup}>
+            <View
+              style={[
+                styles.badge,
+                { backgroundColor: colors.warningAmberBg, borderColor: colors.warningAmber },
+              ]}>
+              <Text selectable={false} style={[styles.badgeText, { color: colors.warningAmber }]}>
+                Stalled
+              </Text>
+            </View>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              disabled={retryingId === item.id}
+              onPress={() => handleRetry(item)}
+              style={styles.retryButton}>
+              {retryingId === item.id ? (
+                <ActivityIndicator size="small" color={colors.ink} />
+              ) : (
+                <Text selectable={false} style={styles.retryText}>
+                  Retry
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.text }]}>
+            <Text selectable={false} style={[styles.badgeText, { color: badge.text }]}>
+              {badge.label}
+            </Text>
+          </View>
+        )}
       </TouchableOpacity>
     );
   };
@@ -280,6 +336,24 @@ const styles = StyleSheet.create({
   },
   badgeText: {
     ...type.label,
+  },
+  stalledGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  retryButton: {
+    minWidth: 56,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ink,
+  },
+  retryText: {
+    ...type.label,
+    color: colors.paper,
   },
   skeletonList: {
     marginTop: 4,

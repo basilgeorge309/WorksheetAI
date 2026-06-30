@@ -192,13 +192,7 @@ export default function WorksheetDetailScreen() {
     <View style={styles.container}>
       <Confetti trigger={confettiOn} />
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        onPress={() => router.back()}
-        style={styles.backButton}>
-        <Ionicons name="chevron-back" size={24} color={colors.graphite} />
-      </Pressable>
+      {/* Back is provided by the native header's bordered button. */}
 
       {/* Celebration header */}
       <View style={styles.celebration}>
@@ -286,12 +280,6 @@ const styles = StyleSheet.create({
     paddingLeft: spacing.xl,
     borderLeftWidth: 2,
     borderLeftColor: colors.marginRed,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'flex-start',
-    justifyContent: 'center',
   },
   processingContainer: {
     alignItems: 'center',

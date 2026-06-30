@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import {
   DarkTheme,
   DefaultTheme,
@@ -8,10 +9,11 @@ import {
 } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { Platform, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
 import 'react-native-reanimated';
 
 import { AuthProvider, useAuth } from '../context/AuthContext';
+import { colors } from '../constants/theme';
 import {
   registerForPushNotifications,
   savePushToken,
@@ -83,8 +85,39 @@ function RootLayoutNav() {
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-        <Stack.Screen name="worksheet/[id]" options={{ title: 'Worksheet' }} />
+        <Stack.Screen
+          name="worksheet/[id]"
+          options={{
+            headerTitle: '',
+            headerStyle: { backgroundColor: colors.paper },
+            headerShadowVisible: false,
+            headerTintColor: colors.ink,
+            headerLeft: () => (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Go back"
+                activeOpacity={0.7}
+                onPress={() => router.back()}
+                style={styles.backButton}>
+                <Ionicons name="arrow-back" size={18} color={colors.ink} />
+              </TouchableOpacity>
+            ),
+          }}
+        />
       </Stack>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  backButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: colors.ink,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
+  },
+});

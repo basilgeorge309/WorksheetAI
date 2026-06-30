@@ -9,7 +9,13 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: colors.ink,
         tabBarInactiveTintColor: colors.mutedText,
+        // Keep the native header for safe-area spacing, but blank its title so it
+        // doesn't duplicate each screen's in-content serif title. Tab-bar labels
+        // still come from each screen's `title`.
         headerShown: true,
+        headerTitle: '',
+        headerStyle: { backgroundColor: colors.paper },
+        headerShadowVisible: false,
         tabBarStyle: {
           backgroundColor: colors.paper,
           borderTopColor: colors.cardBorder,
