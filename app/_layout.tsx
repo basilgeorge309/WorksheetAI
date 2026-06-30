@@ -18,7 +18,7 @@ import {
   registerForPushNotifications,
   savePushToken,
 } from '../lib/notifications';
-import { initRevenueCat } from '../lib/revenuecat';
+import { identifyRevenueCatUser, initRevenueCat } from '../lib/revenuecat';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -56,6 +56,9 @@ function RootLayoutNav() {
   const userId = session?.user?.id;
   useEffect(() => {
     if (!userId) return;
+    // Map RevenueCat's app_user_id to the Supabase user so the edge function can
+    // verify this user's tier server-side.
+    identifyRevenueCatUser(userId);
     registerForPushNotifications().then((token) => {
       if (token) savePushToken(userId, token);
     });

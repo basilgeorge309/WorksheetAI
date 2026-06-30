@@ -24,6 +24,7 @@ import {
   fillWorksheet,
   FileType,
   uploadWorksheet,
+  UsageInfo,
 } from '../../lib/worksheet';
 
 const SESSION_EXPIRED_MSG = 'Your session expired. Please sign in again.';
@@ -66,18 +67,12 @@ export default function HomeScreen() {
   const [difficulty, setDifficulty] = useState<Difficulty>('realistic');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usage, setUsage] = useState<{
-    used: number;
-    limit: number;
-    isPro: boolean;
-  } | null>(null);
+  const [usage, setUsage] = useState<UsageInfo | null>(null);
   const [paywallVisible, setPaywallVisible] = useState(false);
 
   const refreshUsage = useCallback(() => {
     if (!user) return;
-    checkUsage(user.id).then((u) =>
-      setUsage({ used: u.used, limit: u.limit, isPro: u.isPro })
-    );
+    checkUsage(user.id).then((u) => setUsage(u));
   }, [user]);
 
   useFocusEffect(refreshUsage);
@@ -170,7 +165,7 @@ export default function HomeScreen() {
 
       // 1. Usage gate — before any upload, so a blocked user doesn't burn a slot.
       const usageNow = await checkUsage(user.id);
-      setUsage({ used: usageNow.used, limit: usageNow.limit, isPro: usageNow.isPro });
+      setUsage(usageNow);
       if (!usageNow.canUse) {
         setPaywallVisible(true);
         return;
@@ -234,6 +229,8 @@ export default function HomeScreen() {
         <Text style={styles.appName}>Scribbl</Text>
         <View style={styles.usageBarWrap}>
           <UsageBar
+            capType={usage?.capType ?? 'count'}
+            tier={usage?.tier ?? 'free'}
             used={usage?.used ?? 0}
             limit={usage?.limit ?? 3}
             isPro={usage?.isPro}

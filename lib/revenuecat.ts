@@ -56,6 +56,41 @@ export const isProUser = async (): Promise<boolean> => {
   }
 };
 
+export type UserTier = 'free' | 'pro' | 'max';
+
+// Tier from RevenueCat entitlements (highest wins). This is the CLIENT-side read,
+// used for display + the pre-upload gate. The edge function independently re-verifies
+// tier server-side (RevenueCat REST) and never trusts this value for enforcement.
+//
+// MANUAL FOLLOW-UP: the 'pro' and 'max' entitlements must be created in the RevenueCat
+// dashboard (and mapped to the App Store products) once the Apple Developer account is
+// approved. Until then every user resolves to 'free' here, which is the safe default.
+export const getUserTier = async (): Promise<UserTier> => {
+  const info = await getCustomerInfo();
+  if (!info) return 'free';
+  try {
+    const active = info.entitlements?.active ?? {};
+    if (active['max']) return 'max';
+    if (active['pro']) return 'pro';
+    return 'free';
+  } catch {
+    return 'free';
+  }
+};
+
+// Tie the RevenueCat app_user_id to the Supabase user id so the edge function can
+// verify this user's subscription server-side via the RevenueCat REST API. Call once
+// the signed-in user is known. No-op (safe) in Expo Go / when RC isn't configured.
+export const identifyRevenueCatUser = async (userId: string): Promise<void> => {
+  const P = await loadPurchases();
+  if (!P || !userId) return;
+  try {
+    await P.logIn(userId);
+  } catch {
+    // Non-fatal — server-side verification simply falls back to 'free'.
+  }
+};
+
 export const purchasePro = async (): Promise<{ success: boolean; error?: string }> => {
   const P = await loadPurchases();
   if (!P) return { success: false, error: 'Purchases not available in Expo Go' };

@@ -1,12 +1,14 @@
 import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
 
-import { isProUser } from './revenuecat';
+import { getUserTier, UserTier } from './revenuecat';
 import { supabase } from './supabase';
 
 const MAX_PDF_BYTES = 10 * 1024 * 1024; // 10MB
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024; // 20MB (photos run larger)
-const FREE_LIMIT = 3;
+// Free = worksheet COUNT cap; Pro/Max = monthly dollar cap (cents). Mirrors the
+// server-side TIER_LIMITS in the fill-worksheet edge function.
+const TIER_CAPS: Record<UserTier, number> = { free: 3, pro: 1000, max: 5000 };
 
 export type FileType = 'pdf' | 'image';
 const POLL_INTERVAL_MS = 2000;
@@ -23,10 +25,12 @@ export type UploadResult =
 export type FillResult = { outputPath: string } | { error: string };
 
 export type UsageInfo = {
-  used: number;
-  limit: number;
+  tier: UserTier;
+  capType: 'count' | 'cost'; // 'count' = worksheets (free); 'cost' = cents (pro/max)
+  used: number; // free: worksheets used; pro/max: cents spent this month
+  limit: number; // free: 3; pro: 1000; max: 5000
   canUse: boolean;
-  isPro: boolean;
+  isPro: boolean; // tier !== 'free' (back-compat for existing callers)
 };
 
 function currentMonth(): string {
@@ -186,33 +190,38 @@ export async function fillWorksheet(
 }
 
 /**
- * Read this month's usage. Free tier = 3 worksheets / month. Fails open on a
- * read error (lets the user try) but never throws.
+ * Read this month's usage for the user's tier. Free = worksheet COUNT cap (3);
+ * Pro/Max = monthly dollar (cost_cents) cap. This drives the UI + the pre-upload
+ * gate; the edge function independently re-verifies tier + enforces server-side.
+ * Fails open (lets the user try) and never throws.
  */
 export async function checkUsage(userId: string): Promise<UsageInfo> {
-  // Pro is checked client-side via RevenueCat (no isPro DB column). Pro users
-  // are unlimited regardless of the monthly counter.
-  // 4.1 — fail OPEN if RevenueCat is unreachable: don't block a paying user on a
-  // transient error; fall through to the DB free-tier check (still usable).
+  // Tier is read from RevenueCat; on any error treat as 'free' (safe — the server
+  // enforces the real cap regardless).
+  let tier: UserTier = 'free';
   try {
-    const pro = await isProUser();
-    if (pro) {
-      return { used: 0, limit: Infinity, canUse: true, isPro: true };
-    }
+    tier = await getUserTier();
   } catch (e) {
-    console.error('RevenueCat check failed, failing open to DB free-tier check:', e);
+    console.error('RevenueCat tier check failed, treating as free:', e);
   }
+  const capType: 'count' | 'cost' = tier === 'free' ? 'count' : 'cost';
+  const limit = TIER_CAPS[tier];
+  const isPro = tier !== 'free';
   try {
     const { data, error } = await supabase
       .from('usage')
-      .select('worksheets_used')
+      .select('worksheets_used, cost_cents')
       .eq('user_id', userId)
       .eq('month', currentMonth())
       .maybeSingle();
-    const used = !error && data ? (data.worksheets_used as number) : 0;
-    return { used, limit: FREE_LIMIT, canUse: used < FREE_LIMIT, isPro: false };
+    const row = !error && data ? data : null;
+    const used =
+      capType === 'count'
+        ? ((row?.worksheets_used as number) ?? 0)
+        : ((row?.cost_cents as number) ?? 0);
+    return { tier, capType, used, limit, canUse: used < limit, isPro };
   } catch {
-    return { used: 0, limit: FREE_LIMIT, canUse: true, isPro: false };
+    return { tier, capType, used: 0, limit, canUse: true, isPro };
   }
 }
 
