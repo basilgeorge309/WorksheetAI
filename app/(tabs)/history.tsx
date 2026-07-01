@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 
 import { border, colors, radius, spacing, type } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { fillWorksheet } from '../../lib/worksheet';
 
@@ -85,6 +86,7 @@ function SkeletonRow() {
 
 export default function HistoryScreen() {
   const router = useRouter();
+  const { user } = useAuth();
   const [worksheets, setWorksheets] = useState<Worksheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -117,6 +119,34 @@ export default function HistoryScreen() {
       fetchHistory().finally(() => setLoading(false));
     }, [])
   );
+
+  // Live-refresh: when a background fill flips a row to complete/error, refresh the
+  // list even if the user is sitting on this tab (no tab-switch required).
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('worksheet-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'worksheets',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.new.status === 'complete' || payload.new.status === 'error') {
+            fetchHistory();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id]);
 
   const onRefresh = async () => {
     setRefreshing(true);
