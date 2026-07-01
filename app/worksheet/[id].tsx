@@ -31,6 +31,9 @@ export default function WorksheetDetailScreen() {
   const status = params.status ?? '';
   const styleParam = params.style;
   const showProcessing = status !== 'complete' && !outputPath;
+  // Completed in the DB but no output file path — generation didn't finish writing
+  // the result. Show a clear error instead of a broken/blank celebration screen.
+  const brokenComplete = status === 'complete' && !outputPath;
 
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(true);
@@ -201,6 +204,24 @@ export default function WorksheetDetailScreen() {
         </Text>
         <Text selectable={false} style={styles.processingSubtitle}>
           Check back in a moment.
+        </Text>
+        <View style={styles.processingButton}>
+          <OnboardingButton label="Go back" onPress={() => router.back()} />
+        </View>
+      </View>
+    );
+  }
+
+  // Marked complete but the result file is missing — generation didn't finish.
+  if (brokenComplete) {
+    return (
+      <View style={[styles.container, styles.processingContainer]}>
+        <Ionicons name="alert-circle-outline" size={48} color={colors.alertRed} />
+        <Text selectable={false} style={styles.processingTitle}>
+          Something went wrong
+        </Text>
+        <Text selectable={false} style={styles.processingSubtitle}>
+          We couldn&apos;t finish this worksheet. Please try filling it in again.
         </Text>
         <View style={styles.processingButton}>
           <OnboardingButton label="Go back" onPress={() => router.back()} />

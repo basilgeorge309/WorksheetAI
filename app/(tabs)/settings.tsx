@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Linking,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -15,6 +16,7 @@ import {
 import DeleteAccountModal from '../../components/DeleteAccountModal';
 import PaywallModal from '../../components/PaywallModal';
 import { useAuth } from '../../context/AuthContext';
+import { sendLocalNotification } from '../../lib/notifications';
 import { isProUser, restorePurchases } from '../../lib/revenuecat';
 import { border, colors, radius, shadow, type } from '../../constants/theme';
 
@@ -33,6 +35,10 @@ export default function SettingsScreen() {
   const [restoring, setRestoring] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
+
+  // Show dev-only tools when running a dev build OR when signed in as the dev account
+  // (so preview/release builds on the owner's device still get them).
+  const showDevTools = __DEV__ || user?.email === 'basilgeorge309@gmail.com';
 
   const refreshPro = useCallback(() => {
     isProUser().then(setIsPro);
@@ -70,8 +76,12 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
+    <View style={styles.root}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}>
+        <Text style={styles.title}>Settings</Text>
 
       {/* Account */}
       <Text style={styles.sectionLabel}>Account</Text>
@@ -165,14 +175,29 @@ export default function SettingsScreen() {
           <Text style={styles.deleteText}>Delete Account</Text>
         </TouchableOpacity>
 
-        {__DEV__ && (
-          <TouchableOpacity
-            onPress={() => router.push('/onboarding?devStep=3')}
-            style={styles.devRow}>
-            <Text style={styles.devRowText}>Preview onboarding (dev)</Text>
-          </TouchableOpacity>
+        {showDevTools && (
+          <>
+            <TouchableOpacity
+              onPress={() => router.push('/onboarding?devStep=3')}
+              style={styles.devRow}>
+              <Text style={styles.devRowText}>Preview onboarding (dev)</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                sendLocalNotification(
+                  'Worksheet ready! 📝',
+                  'Your answers are filled in. Tap to view.',
+                  { worksheetId: 'test-123', outputPath: 'outputs/test.pdf' }
+                )
+              }
+              style={styles.devRow}>
+              <Text style={styles.devRowText}>Test notification (dev)</Text>
+            </TouchableOpacity>
+          </>
         )}
-      </View>
+        </View>
+      </ScrollView>
 
       <PaywallModal
         visible={paywallVisible}
@@ -191,13 +216,23 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
-    padding: 24,
-    paddingLeft: 20,
+    backgroundColor: colors.paper,
     borderLeftWidth: 2,
     borderLeftColor: colors.marginRed,
-    backgroundColor: colors.paper,
+  },
+  container: {
+    flex: 1,
+  },
+  content: {
+    // flexGrow (not flex:1) so the spacer below still pushes the footer to the
+    // bottom when content is short, but the whole screen scrolls when it's tall.
+    flexGrow: 1,
+    padding: 24,
+    paddingLeft: 20,
+    // Extra bottom room so the footer / dev buttons clear the tab bar.
+    paddingBottom: 48,
   },
   title: {
     ...type.titleSerif,

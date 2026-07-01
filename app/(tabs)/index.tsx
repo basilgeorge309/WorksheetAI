@@ -18,16 +18,13 @@ import UsageBar from '../../components/UsageBar';
 import { border, colors, radius, spacing, type } from '../../constants/theme';
 import { useAuth } from '../../context/AuthContext';
 import { isConnected } from '../../lib/network';
-import { sendLocalNotification } from '../../lib/notifications';
 import {
   checkUsage,
-  fillWorksheet,
   FileType,
+  pollInBackground,
   uploadWorksheet,
   UsageInfo,
 } from '../../lib/worksheet';
-
-const SESSION_EXPIRED_MSG = 'Your session expired. Please sign in again.';
 
 type Style = 'neat' | 'average' | 'messy';
 type Difficulty = 'perfect' | 'realistic' | 'student';
@@ -52,7 +49,7 @@ const SOURCE_CHIPS: { value: Source; label: string; icon: keyof typeof Ionicons.
 ];
 
 export default function HomeScreen() {
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const router = useRouter();
   // 2.4 — synchronous single-flight lock: blocks rapid double-taps before any
   // async work runs (the `loading` state is set too late to stop a double-tap).
@@ -173,7 +170,8 @@ export default function HomeScreen() {
 
       setLoading(true);
 
-      // 3. Upload (PDF or image).
+      // 3. Await ONLY the upload (~2s). The fill itself runs in the background so
+      // the UI is never blocked for the ~2min image generation takes.
       const uploaded = await uploadWorksheet(fileUri, user.id, fileType);
       if ('error' in uploaded) {
         setError(uploaded.error);
@@ -181,40 +179,24 @@ export default function HomeScreen() {
         return;
       }
 
-      // 4. Fill. (Usage is counted server-side by the edge function.)
-      // 5.1 NOTE: if the app is backgrounded during fillWorksheet(), iOS may
-      // suspend the network request after ~30s; the row stays 'processing' in the
-      // DB. The History "Stalled" badge + retry (session 15) recovers that case —
-      // no extra handling needed here.
-      const filled = await fillWorksheet(
+      // 4. Fire-and-forget: kick off the edge function + background poll, which
+      // fires a local notification when the row settles. (Usage is counted
+      // server-side by the edge function — no client increment.)
+      pollInBackground(
         uploaded.worksheetId,
         uploaded.storagePath,
         style,
         difficulty,
         subjectFor(style)
       );
-      if ('error' in filled) {
-        setLoading(false);
-        // 3.2 — expired session: the user can't proceed without re-auth, so route
-        // them to the auth flow instead of showing dead-end inline text.
-        if (filled.error === SESSION_EXPIRED_MSG) {
-          await signOut();
-          router.replace('/onboarding');
-          return;
-        }
-        setError(filled.error);
-        return;
-      }
 
-      // 6. Notify, then navigate (never while loading is true).
-      await sendLocalNotification(
-        'Worksheet ready! 📝',
-        'Your filled worksheet is ready to view.'
-      );
+      // 5. Reset the form and jump to History immediately; the user is free to
+      // keep using the app while the worksheet fills in.
       setLoading(false);
-      router.push(
-        `/worksheet/${uploaded.worksheetId}?outputPath=${encodeURIComponent(filled.outputPath)}`
-      );
+      clearSelection();
+      setStyle('average');
+      setDifficulty('realistic');
+      router.replace('/(tabs)/history');
     } finally {
       submittingRef.current = false;
     }

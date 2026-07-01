@@ -151,6 +151,12 @@ export default function HistoryScreen() {
     await fetchHistory();
   };
 
+  // Any in-flight worksheet drives a lightweight "filling in…" banner. The
+  // useFocusEffect re-fetch above refreshes this whenever the tab regains focus.
+  const hasProcessing = worksheets.some(
+    (w) => w.status === 'pending' || w.status === 'processing'
+  );
+
   const renderRow = ({ item }: { item: Worksheet }) => {
     const badge = BADGE_CONFIG[item.status] ?? BADGE_CONFIG.pending;
     const stalled = isStalled(item);
@@ -253,6 +259,14 @@ export default function HistoryScreen() {
   return (
     <View style={styles.container}>
       {Title}
+      {hasProcessing && (
+        <View style={styles.processingBanner}>
+          <ActivityIndicator size="small" color={colors.ink} />
+          <Text selectable={false} style={styles.processingBannerText}>
+            Filling in your worksheet… this can take a couple of minutes.
+          </Text>
+        </View>
+      )}
       <FlatList
         data={worksheets}
         keyExtractor={(item) => item.id}
@@ -301,6 +315,21 @@ const styles = StyleSheet.create({
   listContent: {
     paddingBottom: 100,
     flexGrow: 1,
+  },
+  processingBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.paper,
+    padding: 12,
+    marginBottom: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: colors.cardBorder,
+  },
+  processingBannerText: {
+    ...type.small,
+    color: colors.ink,
+    flex: 1,
   },
   row: {
     flexDirection: 'row',

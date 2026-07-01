@@ -71,11 +71,19 @@ export async function savePushToken(userId: string, token: string): Promise<void
   }
 }
 
-/** Fire an immediate local notification from the device itself. */
-export async function sendLocalNotification(title: string, body: string): Promise<void> {
+/**
+ * Fire an immediate local notification from the device itself. Optional `data`
+ * rides along on the notification so a tap can deep-link (see the response
+ * listener in app/_layout.tsx).
+ */
+export async function sendLocalNotification(
+  title: string,
+  body: string,
+  data?: Record<string, unknown>
+): Promise<void> {
   try {
     await Notifications.scheduleNotificationAsync({
-      content: { title, body },
+      content: { title, body, data },
       trigger: null, // immediate
     });
   } catch {

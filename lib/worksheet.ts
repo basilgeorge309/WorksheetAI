@@ -1,6 +1,7 @@
 import { decode } from 'base64-arraybuffer';
 import * as FileSystem from 'expo-file-system/legacy';
 
+import { sendLocalNotification } from './notifications';
 import { getUserTier, UserTier } from './revenuecat';
 import { supabase } from './supabase';
 
@@ -12,7 +13,9 @@ const TIER_CAPS: Record<UserTier, number> = { free: 3, pro: 1000, max: 5000 };
 
 export type FileType = 'pdf' | 'image';
 const POLL_INTERVAL_MS = 2000;
-const POLL_TIMEOUT_MS = 30000;
+// Image generation (solve + gpt-image-2 edit) can take 1-2+ minutes, so poll well
+// past the old 30s ceiling before giving up.
+const POLL_TIMEOUT_MS = 180000;
 const UPLOAD_TIMEOUT_MS = 30000;
 
 // Sentinel so an upload that hangs past the timeout never blocks indefinitely.
@@ -85,9 +88,33 @@ export async function uploadWorksheet(
       return { error: raced.error.message };
     }
 
+    // PDFs: rasterize page 1 to a PNG ON-DEVICE (native PDFKit/PdfRenderer) and store
+    // it, so the edge function never has to run mupdf (which blows the 2s CPU limit).
+    // Best-effort: on any failure raster_path stays null and the edge function will ask
+    // the user for a photo. (The native module is unavailable in Expo Go.)
+    let rasterPath: string | null = null;
+    if (isPdf) {
+      try {
+        const PdfThumbnail = (await import('react-native-pdf-thumbnail')).default;
+        const { uri: pngUri } = await PdfThumbnail.generate(uri, 0);
+        const pngBase64 = await FileSystem.readAsStringAsync(pngUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const pngBytes = decode(pngBase64);
+        rasterPath = `uploads/${userId}/${Date.now()}_page.png`;
+        const { error: rasterErr } = await supabase.storage
+          .from('worksheets')
+          .upload(rasterPath, pngBytes, { contentType: 'image/png' });
+        if (rasterErr) rasterPath = null;
+      } catch (e) {
+        console.warn('Client PDF rasterize failed:', e instanceof Error ? e.message : e);
+        rasterPath = null;
+      }
+    }
+
     const { data, error: insertError } = await supabase
       .from('worksheets')
-      .insert({ user_id: userId, storage_path: storagePath, status: 'pending' })
+      .insert({ user_id: userId, storage_path: storagePath, status: 'pending', raster_path: rasterPath })
       .select('id')
       .single();
     if (insertError || !data) {
@@ -187,6 +214,92 @@ export async function fillWorksheet(
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Could not fill the worksheet.' };
   }
+}
+
+const BG_POLL_INTERVAL_MS = 3000;
+const BG_POLL_TIMEOUT_MS = 5 * 60 * 1000; // 5 min — well past the ~2min fill time.
+
+/**
+ * Fire-and-forget fill: kick off the edge function (never awaited) and watch the
+ * worksheet row in the background, firing a local notification when it settles.
+ *
+ * This is intentionally detached from any component lifecycle — the caller (Home)
+ * navigates away immediately, so we use a plain `setTimeout` chain rather than a
+ * React effect. Note: iOS suspends JS timers while the app is backgrounded, so the
+ * notification reliably fires when the app is foregrounded or on resume; the
+ * History banner + auto-refresh cover the reopen case.
+ */
+export function pollInBackground(
+  worksheetId: string,
+  storagePath: string,
+  style: string,
+  difficulty: string,
+  subject: string
+): void {
+  void (async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      await sendLocalNotification(
+        'Worksheet failed',
+        'Your session expired. Sign in and try again.'
+      );
+      return;
+    }
+
+    // Kick off the edge function but never await it — we learn the outcome by
+    // watching the DB row, so a slow or aborted invoke can't hang the poll.
+    supabase.functions
+      .invoke('fill-worksheet', {
+        body: { worksheetId, storagePath, style, difficulty, subject },
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      .catch(() => {
+        // Swallowed — the poll loop below reports the real outcome from the row.
+      });
+
+    const deadline = Date.now() + BG_POLL_TIMEOUT_MS;
+
+    const tick = async () => {
+      if (Date.now() >= deadline) {
+        await sendLocalNotification(
+          'Still working…',
+          'Your worksheet is taking longer than usual. Check History soon.'
+        );
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from('worksheets')
+          .select('status, output_path')
+          .eq('id', worksheetId)
+          .single();
+        if (!error && data) {
+          if (data.status === 'complete' && data.output_path) {
+            await sendLocalNotification(
+              'Worksheet ready! 📝',
+              'Tap to view your filled worksheet.',
+              { worksheetId, outputPath: data.output_path }
+            );
+            return;
+          }
+          if (data.status === 'error') {
+            await sendLocalNotification(
+              'Worksheet failed',
+              'Something went wrong. Open History to retry.'
+            );
+            return;
+          }
+        }
+      } catch {
+        // Transient read blip — keep polling until the deadline.
+      }
+      setTimeout(tick, BG_POLL_INTERVAL_MS);
+    };
+
+    setTimeout(tick, BG_POLL_INTERVAL_MS);
+  })();
 }
 
 /**

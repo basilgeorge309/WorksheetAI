@@ -7,6 +7,7 @@ import {
   useRouter,
   useSegments,
 } from 'expo-router';
+import * as Notifications from 'expo-notifications';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Platform, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
@@ -63,6 +64,28 @@ function RootLayoutNav() {
       if (token) savePushToken(userId, token);
     });
   }, [userId]);
+
+  // Deep-link a tapped "Worksheet ready" notification to the finished worksheet.
+  // Handles both cold start (app launched by the tap) and warm (tap while running).
+  useEffect(() => {
+    const openFromResponse = (
+      response: Notifications.NotificationResponse | null
+    ) => {
+      const data = response?.notification.request.content.data as
+        | { worksheetId?: string; outputPath?: string }
+        | undefined;
+      if (!data?.worksheetId) return;
+      router.push(
+        `/worksheet/${data.worksheetId}?outputPath=${encodeURIComponent(
+          data.outputPath ?? ''
+        )}&status=complete`
+      );
+    };
+
+    Notifications.getLastNotificationResponseAsync().then(openFromResponse);
+    const sub = Notifications.addNotificationResponseReceivedListener(openFromResponse);
+    return () => sub.remove();
+  }, [router]);
 
   // Hide the splash screen once we know whether there is a session.
   useEffect(() => {
